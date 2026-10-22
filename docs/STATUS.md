@@ -8,11 +8,12 @@ side must not read.
 ## Spec stages
 - 2026-10-22, stage 0: device swept, scored inventory final (`../SWEEP-REPORT.md`). Samba ACR +
   6 telemetry/ad packages disabled on-device (reversible). APKs pulled; toolchain installed.
-- `launcher-spec.md`: stage 1 — sections 0-3 and open questions final (HOME role, becoming
-  default home, input switching via public APIs, Sony customizer config, permissions). Sections
-  4-11 (home-screen behavior, key handling, ads/bugs not to copy, test plan) in progress.
-- `remote-spec.md`: to be written — remote stack (`com.google.android.tv.remote.service`,
-  `globalkeyoverlay` hardware-button remap, UEI QuickSet IR/CEC, voice/mic path).
+- `launcher-spec.md`: FINAL — sections 0-11 + open questions (HOME role, becoming default home,
+  input switching via public APIs, Sony customizer config, permission map, home-screen layout,
+  ads/telemetry NOT to copy, what to keep, test plan).
+- `remote-spec.md`: FINAL — remote stack (remote/pairing service kept, soft remote via public
+  mechanism, global-key hardware-button remap via RRO, UEI QuickSet IR/CEC kept, voice/mic path
+  disabled by default).
 
 ## Implementation
 - `app/` : not started. Shart TV launcher built from `launcher-spec.md` + public AOSP Leanback

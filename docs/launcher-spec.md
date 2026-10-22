@@ -415,6 +415,120 @@ extra work.
 
 ---
 
+## 4. Home-screen layout and behavior
+
+Shart TV's home screen is the owner's reaction to launcherx: no ads, no sponsored rows, the
+input/source switcher first, fast and quiet. Design, not a copy of launcherx's layout.
+
+### 4.1 What is shown, top to bottom [D][M]
+- **Inputs row first.** HDMI 1-4 and other sources as large tiles, left to right, last-used
+  first (see 4.3). This is the inverse of the stock launcher, where inputs are buried behind a
+  menu. One press from home to any input.
+- **Apps row.** The owner's installed TV apps (`MAIN` + `LEANBACK_LAUNCHER`, section 3.2), in a
+  user-arrangeable order; default order may be seeded from the customizer app-order list for
+  `US CA` (section 3.5), minus anything the owner hides. No "sponsored" or "featured" app slots.
+- **Optional Live TV / Guide tiles**, opened via the customizer's `basic-mode-live-tv-app-uri`
+  and `basic-mode-epg-app-uri` (section 3.5) so Sony's names are not hard-coded.
+- **Settings / power / clock** affordances.
+- **No** OEM promo tab, **no** Google "Top picks"/recommendation rows, **no** content-feed rows.
+
+### 4.2 Rows and focus [D]
+- Build with Leanback (`BrowseSupportFragment`/`VerticalGridView`) or Compose-for-TV [M]. DPAD
+  focus must be obvious and never trapped; BACK always returns to the inputs row.
+- Remember the last focused tile across resume (`stateNotNeeded`/`singleTask`, section 3.1).
+
+### 4.3 Input switching (public APIs only) [D][O]
+- Enumerate inputs with `TvInputManager.getTvInputList()` (no permission) [D]. On this TV the
+  physical HDMI inputs present as hardware inputs HW1-HW4 [O].
+- Switch by starting `ACTION_VIEW` on the input's passthrough URI
+  (`TvContract.buildChannelUriForPassthroughInput(inputId)`); on this TV that hands off to Sony's
+  TV player for that input [O]. No CEC permission required to request the switch.
+- **Last-used-first ordering:** Shart TV registers a receiver for
+  `com.sony.dtv.tvplayer.intent.action.INPUT_CHANGED`, which Sony's TV player broadcasts to any
+  app with no permission required [O]. Its extras carry the current input; Shart TV records it and
+  floats that tile to the front of the inputs row. (The companion "input selected" broadcast is
+  sent only to the Google launcher and is not receivable by Shart TV [O] — so we use
+  INPUT_CHANGED, section 12 tracks confirming its extras.)
+- HDMI connected/disconnected state: all four HDMI ports read disconnected at sweep time even
+  though a source was on [O]; whether `TvInputManager` state callbacks fire reliably here is open
+  question (section 12). Shart TV shows all inputs regardless and does not gray out on that signal
+  until verified.
+
+## 5. Becoming and staying HOME
+
+Covered mechanically in section 3.4-3.5. Behavior Shart TV must get right:
+- On first run, Shart TV shows a one-screen "set me as your home screen" prompt that deep-links to
+  the TV's default-home setting, or tells the owner the one `adb` line
+  (`cmd package set-home-activity com.sharttv`); the spec team does not run it (section 3.5).
+- Shart TV never tries to disable launcherx or claim the role by priority (it can't; section 3.4).
+  It holds the role or it doesn't.
+- If Shart TV loses the role (update, role reset), it detects it is not the HOME holder on next
+  launch (`RoleManager.isRoleHeld(ROLE_HOME)` is readable [D]) and re-offers the prompt. Whether
+  the role survives reboot and launcherx updates is open question 1/2 (section 12).
+
+## 6. Notifications and the system panel (what we cannot own) [O][D]
+- The TV notification panel is a privileged/role surface (`ACCESS_NOTIFICATIONS`,
+  `STATUS_BAR_SERVICE`, `SYSTEM_TELEVISION_NOTIFICATION_HANDLER`), off-limits to a user app
+  (section 3.3). Shart TV does **not** reimplement it.
+- Shart TV may show its own lightweight badge using a notification-listener service the owner
+  enables over adb (`cmd notification allow_listener`, section 3.3), optional and later.
+- How a normal app opens the stock panel at all (if we want a shortcut tile to it) is open
+  question (section 12).
+
+## 7. Settings and quick controls [D]
+- Deep-link to the real Settings via public intents (`android.settings.*`) and the input/Wi-Fi
+  screens; do not reimplement them.
+- A quick panel on long-press HOME offers: input switch, Wi-Fi, display/sound settings link, and
+  the Shart TV debloat toggles are **not** here (those are host-side scripts, not in-app, since a
+  user app can't disable other packages — `CHANGE_COMPONENT_ENABLED_STATE` is privileged, 3.3).
+
+## 8. Branding and app identity
+- Package: `com.sharttv` (final name TBD by owner). Home activity `com.sharttv.HomeActivity`,
+  `LEANBACK_LAUNCHER` entry with a banner. Shart TV name/art per the project's style; no Sony or
+  Google marks.
+- Same family as the owner's other projects; match their naming and any easter eggs as the owner
+  decides.
+
+## 9. Behaviors NOT to copy (the reason for the rewrite) [I][O]
+Numbered, each with what Shart TV does instead. These are effects observed/inferred from the stock
+stack, written as requirements — no stock code is reproduced.
+1. **Ad / sponsored / "featured" rows** on the home screen (Google surfaces + Sony promos + Sony
+   Select + the OEM promo tab). Shart TV shows none; it has no ad-id permission and no promo feed.
+2. **Recommendation/content feeds** that pull titles and watch data. Shart TV has no recommender
+   and makes no content calls; `INTERNET` is only declared if a future feature needs it.
+3. **Advertising ID** (`com.google.android.gms.permission.AD_ID`) and account/tracking perms.
+   Shart TV declares none (section 3.3).
+4. **Input switcher buried** behind menus. Shart TV puts inputs first (section 4.1).
+5. **Source swapper hard to reach.** Shart TV binds it to the input button and the top row, and
+   can remap the remote's dedicated buttons to it (remote-spec section 2.2/3).
+6. **OEM promo tab** content provider. Shart TV ignores `oem-tab-*` (section 3.5).
+7. **Telemetry on launch/usage.** Shart TV emits none. (The device-wide ACR/telemetry apps are
+   handled host-side; see SWEEP-REPORT.md — already disabled.)
+
+## 10. What we keep working (don't break) [O]
+- Live TV and Guide reachable via the customizer URIs (section 3.5).
+- The stock launcherx stays installed (HOME fallback + privileged surfaces it owns, section 3.4);
+  Shart TV simply holds the HOME role instead.
+- The physical remote and CEC/soundbar control (remote-spec).
+- Any app the owner already uses, including `com.hione.tv` (his own LEANBACK launcher, v0.2.1,
+  present on the TV) — Shart TV lists it like any other app.
+
+## 11. Test plan
+Owner runs any state-changing step. Baseline the stock launcher first where possible.
+1. **Install / build:** Shart TV installs as a user app; its HOME and LEANBACK activities resolve
+   (`cmd package query-activities -c android.intent.category.HOME` shows it).
+2. **Become HOME:** owner runs `cmd package set-home-activity com.sharttv`; `dumpsys role` shows
+   Shart TV holds `android.app.role.HOME`; pressing HOME lands on Shart TV.
+3. **Inputs:** every HDMI input switches in one press via the passthrough URI; last-used input
+   floats to front after an INPUT_CHANGED broadcast.
+4. **Apps:** installed TV apps list correctly; add/remove an app and confirm the row refreshes.
+5. **No-ads check:** home screen shows no sponsored/promo/recommendation rows; no network calls
+   on idle home (confirm with a `/proc/net` snapshot while home is foreground).
+6. **Survive reboot:** after reboot Shart TV is still HOME and still ad-free; confirm role held.
+7. **Survive launcherx update:** after a launcherx update, re-check the role (open question 2).
+8. **Rollback:** owner sets home back to launcherx (`set-home-activity
+   com.google.android.apps.tv.launcherx`); stock behavior returns.
+
 ## 12. Open questions (answer on the TV, owner runs anything that changes state)
 
 1. Does `cmd package set-home-activity <shart package>` (or `cmd role add-role-holder
