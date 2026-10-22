@@ -11,3 +11,8 @@ local.properties
 *.jks
 boards/pics/*.png
 boards/pics/*.html
+
+# security
+sharttv-release.jks
+keystore.properties
+.ks_storepass

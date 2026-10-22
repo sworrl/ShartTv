@@ -1,0 +1,7 @@
+<resources>
+  <string name="app_name">Shart TV</string>
+  <string name="inputs">Inputs</string>
+  <string name="apps">Apps</string>
+  <string name="settings">Settings</string>
+  <string name="theme_settings">Shart TV — Appearance</string>
+</resources>

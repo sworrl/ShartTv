@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <!-- Weather needs network. No ads, no telemetry, no tracking SDKs. Egress is pinned (see network_security_config) and limited to Open-Meteo + your own BeaconFix. -->
+  <uses-permission android:name="android.permission.INTERNET"/>
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+  <uses-feature android:name="android.software.leanback" android:required="false"/>
+  <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
+
+  <!-- See apps so we can list them (no QUERY_ALL_PACKAGES needed). -->
+  <queries>
+    <intent>
+      <action android:name="android.intent.action.MAIN"/>
+      <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>
+    </intent>
+    <intent>
+      <action android:name="android.intent.action.MAIN"/>
+      <category android:name="android.intent.category.LAUNCHER"/>
+    </intent>
+  </queries>
+
+  <application
+      android:allowBackup="false"
+
+      android:networkSecurityConfig="@xml/network_security_config"
+      android:dataExtractionRules="@xml/data_extraction_rules"
+      android:hasFragileUserData="false"
+      android:label="Shart TV"
+      android:icon="@mipmap/ic_banner"
+      android:banner="@mipmap/ic_banner"
+      android:theme="@style/Theme.ShartTv"
+      android:supportsRtl="true">
+
+    <activity
+        android:name=".LauncherActivity"
+        android:exported="true"
+        android:launchMode="singleTask"
+        android:stateNotNeeded="true"
+        android:resumeWhilePausing="true"
+        android:excludeFromRecents="true"
+        android:screenOrientation="landscape"
+        android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenLayout|screenSize|smallestScreenSize|uiMode|density|fontScale">
+      <!-- HOME role -->
+      <intent-filter android:priority="0">
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.HOME"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+      </intent-filter>
+      <!-- App-drawer entry so it also shows as a launchable TV app -->
+      <intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+        <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>
+    </activity>
+
+    <activity
+        android:name=".SettingsActivity"
+        android:exported="true"
+        android:screenOrientation="landscape"
+        android:theme="@style/Theme.ShartTv"/>
+  </application>
+</manifest>
