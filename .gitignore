@@ -9,3 +9,5 @@ app/.gradle/
 local.properties
 *.keystore
 *.jks
+boards/pics/*.png
+boards/pics/*.html
