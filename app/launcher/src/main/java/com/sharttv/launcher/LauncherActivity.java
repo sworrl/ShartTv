@@ -25,6 +25,7 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import com.sharttv.launcher.ui.Fonts;
 import com.sharttv.launcher.ui.Glass;
+import com.sharttv.launcher.ui.Semantic;
 import com.sharttv.launcher.weather.Loc;
 import com.sharttv.launcher.weather.TimeSky;
 import com.sharttv.launcher.weather.WeatherEngine;
@@ -48,6 +49,14 @@ public class LauncherActivity extends Activity {
     private FrameLayout root;
     private final List<Tile> inputs = new ArrayList<>();
     private BroadcastReceiver inputChanged;
+    private UsageStore usage;
+    private LinearLayout forecastStrip;
+    private android.webkit.WebView radar;
+
+    private static String usageKey(Tile t) {
+        String p = t.kind == Tile.Kind.APP ? "app:" : t.kind == Tile.Kind.INPUT ? "input:" : "set:";
+        return p + t.key;
+    }
 
     // weather + time-of-day
     private WeatherView weatherView;
@@ -78,6 +87,7 @@ public class LauncherActivity extends Activity {
         super.onCreate(s);
         Fonts.load(this);
         Glass.init(this);
+        usage = new UsageStore(this);
         theme = Theme.load(this);
         accentNow = theme.accentColor;
         buildUi();
@@ -93,7 +103,7 @@ public class LauncherActivity extends Activity {
                 engine.setListener((wx, loc) -> {
                     curWx = wx; curLoc = loc;
                     if (weatherView != null) weatherView.setWeather(wx);
-                    updateChrome();
+                    updateWeatherUi();
                 });
             }
             engine.start();
@@ -140,7 +150,7 @@ public class LauncherActivity extends Activity {
 
         if (theme.weather) {
             col.addView(buildHero(), new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(214)));
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(360)));
         }
 
         RecyclerView shelves = new RecyclerView(this);
@@ -151,9 +161,38 @@ public class LauncherActivity extends Activity {
         List<Section> sections = new ArrayList<>();
         inputs.clear();
         inputs.addAll(Repo.inputs(this, theme));
+        List<Tile> apps = Repo.apps(this, theme);
+        List<Tile> settings = Repo.settings(this, theme);
+
+        // Learned usage: auto-promote (sort each row by score) when enabled.
+        if (theme.autoPromote) {
+            UsageStore.KeyOf<Tile> ko = LauncherActivity::usageKey;
+            usage.sortByScore(inputs, ko);
+            usage.sortByScore(apps, ko);
+        }
+
+        // "Most used" row from everything the owner actually launches.
+        if (theme.showMostUsed && usage.hasData()) {
+            List<Tile> pool = new ArrayList<>(); pool.addAll(inputs); pool.addAll(apps); pool.addAll(settings);
+            java.util.Map<String, Tile> byKey = new java.util.HashMap<>();
+            for (Tile t : pool) byKey.put(usageKey(t), t);
+            List<Tile> most = new ArrayList<>();
+            for (String k : usage.topKeys(8)) { Tile t = byKey.get(k); if (t != null) most.add(t); }
+            if (!most.isEmpty()) sections.add(new Section(getString(R.string.most_used), most));
+        }
+
+        // Featured Hione apps (HioneCast etc.) — always promoted to the very top.
+        List<Tile> hione = new ArrayList<>();
+        for (Tile t : apps) {
+            String k = t.key == null ? "" : t.key.toLowerCase(Locale.US);
+            String l = t.label == null ? "" : t.label.toLowerCase(Locale.US);
+            if (k.startsWith("com.hione") || k.contains(".hione.") || l.contains("hione")) hione.add(t);
+        }
+        if (!hione.isEmpty()) sections.add(0, new Section("Hione", hione));
+
         if (!inputs.isEmpty()) sections.add(new Section(getString(R.string.inputs), inputs));
-        sections.add(new Section(getString(R.string.apps), Repo.apps(this, theme)));
-        sections.add(new Section(getString(R.string.settings), Repo.settings(this, theme)));
+        sections.add(new Section(getString(R.string.apps), apps));
+        sections.add(new Section(getString(R.string.settings), settings));
         shelves.setAdapter(new ShelfAdapter(sections));
         col.addView(shelves, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
@@ -164,6 +203,7 @@ public class LauncherActivity extends Activity {
         setContentView(root);
         registerInputChanged();
         updateChrome();
+        if (theme.weather) updateWeatherUi();
     }
 
     // ---------- top bar ----------
@@ -199,58 +239,118 @@ public class LauncherActivity extends Activity {
         return bar;
     }
 
-    // ---------- weather hero ----------
+    // ---------- weather hero (nerd dashboard) ----------
+    private final java.util.LinkedHashMap<String, TextView> metricViews = new java.util.LinkedHashMap<>();
+    private static final String[] METRIC_KEYS = {
+        "Feels","Dew Pt","Humidity","Pressure","Wind","Gust","UV","UV Max",
+        "Visibility","Cloud L/M/H","CAPE","Precip %","AQI","PM2.5","Sunrise","Sunset"
+    };
+
     private View buildHero() {
         FrameLayout wrap = new FrameLayout(this);
         wrap.setBackground(Glass.card(theme.surfaceColor, theme.accentColor, false, dp(26)));
         Glass.clipRound(wrap, dp(26));
-        int pad = dp(22);
+        int pad = dp(20);
+
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(pad + dp(18), pad, pad + dp(18), pad);
+
+        // ---- main row: left summary | metrics grid | radar ----
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(pad + dp(20), pad, pad + dp(20), pad);
 
         LinearLayout leftc = new LinearLayout(this);
         leftc.setOrientation(LinearLayout.VERTICAL);
         heroTemp = new TextView(this);
         heroTemp.setTypeface(Fonts.display, Typeface.BOLD);
         heroTemp.setTextColor(theme.textColor);
-        heroTemp.setTextSize(TypedValue.COMPLEX_UNIT_SP, 54);
+        heroTemp.setTextSize(TypedValue.COMPLEX_UNIT_SP, 56);
         heroCond = new TextView(this);
         heroCond.setTypeface(Fonts.display);
         heroCond.setTextColor(theme.accentColor);
-        heroCond.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
-        heroCond.setLetterSpacing(0.04f);
+        heroCond.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
+        heroCond.setLetterSpacing(0.03f);
+        heroCond.setMaxLines(2);
         heroPlace = new TextView(this);
         heroPlace.setTypeface(Fonts.body);
         heroPlace.setTextColor(theme.textDimColor);
         heroPlace.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
         leftc.addView(heroTemp); leftc.addView(heroCond); leftc.addView(heroPlace);
-        row.addView(leftc, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        LinearLayout.LayoutParams llp = new LinearLayout.LayoutParams(dp(230), ViewGroup.LayoutParams.WRAP_CONTENT);
+        row.addView(leftc, llp);
 
-        View div = new View(this);
-        div.setBackground(Glass.divider(Glass.withAlpha(theme.accentColor, 0x88)));
-        LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(dp(2), dp(120));
-        dlp.setMargins(dp(10), 0, dp(24), 0);
-        // vertical divider: reuse horizontal one rotated is overkill; a thin accent line is fine
-        GradientDrawable vd = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                new int[]{Glass.withAlpha(theme.accentColor,0), Glass.withAlpha(theme.accentColor,0x99), Glass.withAlpha(theme.accentColor,0)});
-        div.setBackground(vd);
-        row.addView(div, dlp);
+        // metrics: 4 even columns (4 metrics each) so nothing clips
+        LinearLayout grid = new LinearLayout(this);
+        grid.setOrientation(LinearLayout.HORIZONTAL);
+        metricViews.clear();
+        int cols = 4, perCol = (METRIC_KEYS.length + cols - 1) / cols;
+        for (int c = 0; c < cols; c++) {
+            LinearLayout colv = new LinearLayout(this);
+            colv.setOrientation(LinearLayout.VERTICAL);
+            for (int r = 0; r < perCol; r++) {
+                int idx = c * perCol + r;
+                if (idx >= METRIC_KEYS.length) break;
+                String key = METRIC_KEYS[idx];
+                LinearLayout cell = new LinearLayout(this);
+                cell.setOrientation(LinearLayout.VERTICAL);
+                cell.setPadding(dp(4), dp(4), dp(10), dp(4));
+                TextView val = new TextView(this);
+                val.setTypeface(Fonts.display, Typeface.BOLD);
+                val.setTextColor(theme.textColor);
+                val.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+                val.setSingleLine(true);
+                val.setText("—");
+                TextView lab = new TextView(this);
+                lab.setTypeface(Fonts.body);
+                lab.setTextColor(theme.textDimColor);
+                lab.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+                lab.setLetterSpacing(0.03f);
+                lab.setSingleLine(true);
+                lab.setText(key.toUpperCase(Locale.getDefault()));
+                cell.addView(val); cell.addView(lab);
+                metricViews.put(key, val);
+                colv.addView(cell);
+            }
+            grid.addView(colv, new LinearLayout.LayoutParams(dp(98), ViewGroup.LayoutParams.WRAP_CONTENT));
+        }
+        LinearLayout.LayoutParams glp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        glp.setMargins(dp(18), 0, dp(10), 0);
+        row.addView(grid, glp);
 
-        heroMetrics = new TextView(this);
-        heroMetrics.setTypeface(Fonts.body);
-        heroMetrics.setTextColor(theme.textColor);
-        heroMetrics.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
-        heroMetrics.setLineSpacing(dp(4), 1f);
-        row.addView(heroMetrics, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        // radar inlay (Windy embed; keyless)
+        if (theme.radar) {
+            radar = new android.webkit.WebView(this);
+            android.webkit.WebSettings ws = radar.getSettings();
+            ws.setJavaScriptEnabled(true);
+            ws.setDomStorageEnabled(true);
+            radar.setBackgroundColor(Color.TRANSPARENT);
+            FrameLayout radarWrap = new FrameLayout(this);
+            Glass.clipRound(radarWrap, dp(16));
+            radarWrap.setBackground(Glass.card(theme.surfaceColor, theme.accentColor, false, dp(16)));
+            radarWrap.addView(radar, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(0, dp(236), 1f);
+            rlp.setMarginStart(dp(6));
+            row.addView(radarWrap, rlp);
+        }
 
-        wrap.addView(row, new FrameLayout.LayoutParams(
+        card.addView(row);
+
+        // ---- forecast strip ----
+        forecastStrip = new LinearLayout(this);
+        forecastStrip.setOrientation(LinearLayout.HORIZONTAL);
+        forecastStrip.setGravity(Gravity.CENTER_VERTICAL);
+        View rule = new View(this);
+        rule.setBackground(Glass.divider(Glass.withAlpha(theme.accentColor, 0x55)));
+        LinearLayout.LayoutParams rulp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(14));
+        rulp.setMargins(0, dp(6), 0, dp(2));
+        card.addView(rule, rulp);
+        card.addView(forecastStrip, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        wrap.addView(card, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        FrameLayout.LayoutParams outer = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-        // margin so the hero floats
         LinearLayout holder = new LinearLayout(this);
         holder.setPadding(dp(48), dp(14), dp(48), dp(6));
         holder.addView(wrap, new LinearLayout.LayoutParams(
@@ -258,39 +358,104 @@ public class LauncherActivity extends Activity {
         return holder;
     }
 
+    /** clock + tint, every second (cheap). */
     private void updateChrome() {
         Date now = new Date();
         if (barClock != null) barClock.setText(new SimpleDateFormat("h:mm", Locale.getDefault()).format(now));
         if (barDate != null) barDate.setText(new SimpleDateFormat("EEEE, MMMM d", Locale.getDefault()).format(now).toUpperCase(Locale.getDefault()));
+        if (barWx == null) updateWeatherUi();
+    }
+
+    /** heavy weather UI; only on a new reading. */
+    private void updateWeatherUi() {
         boolean haveWx = curWx != null && curWx.valid();
-        if (barWx != null) {
-            barWx.setText(haveWx ? curWx.icon + "   " + f(curWx.tempC) + "°  ·  " + curWx.name
-                                 : "Shart TV");
+        if (barWx != null)
+            barWx.setText(haveWx ? curWx.icon + "   " + f(curWx.tempC) + "°  ·  " + curWx.name : "Shart TV");
+        if (heroTemp == null) return;
+        if (!haveWx) {
+            heroTemp.setText("—"); heroCond.setText("Weather");
+            heroPlace.setText("waiting for a location fix");
+            return;
         }
-        if (heroTemp != null) {
-            if (haveWx) {
-                heroTemp.setText(f(curWx.tempC) + "°");
-                heroCond.setText(curWx.name);
-                heroPlace.setText((curLoc != null && curLoc.place != null && !curLoc.place.isEmpty())
-                        ? curLoc.place : "");
-                StringBuilder m = new StringBuilder();
-                m.append("Feels  ").append(f(curWx.feelsC)).append("°\n");
-                if (!Double.isNaN(curWx.tempMaxC) && !Double.isNaN(curWx.tempMinC))
-                    m.append("High ").append(f(curWx.tempMaxC)).append("°   Low ").append(f(curWx.tempMinC)).append("°\n");
-                if (curWx.humidity > 0) m.append("Humidity  ").append(curWx.humidity).append("%\n");
-                m.append("Wind  ").append(compass(curWx.windDirDeg)).append(" ")
-                 .append(Math.round(curWx.windKmh * 0.621)).append(" mph");
-                heroMetrics.setText(m.toString());
-            } else {
-                heroTemp.setText("—");
-                heroCond.setText("Weather");
-                heroPlace.setText("waiting for a location fix");
-                heroMetrics.setText("Set a BeaconFix URL or manual\nlat/lon in Appearance.");
-            }
+        heroTemp.setText(f(curWx.tempC) + "°");
+        heroCond.setText(curWx.name);
+        heroPlace.setText((curLoc != null && curLoc.place != null && !curLoc.place.isEmpty())
+                ? curLoc.place : (curLoc != null ? String.format(Locale.US,"%.2f, %.2f",curLoc.lat,curLoc.lon) : ""));
+        setM("Feels", f(curWx.feelsC) + "°");
+        setM("Dew Pt", Double.isNaN(curWx.dewC) ? "—" : f(curWx.dewC) + "°");
+        setM("Humidity", curWx.humidity > 0 ? curWx.humidity + "%" : "—");
+        setM("Pressure", Double.isNaN(curWx.pressureHpa) ? "—" : Math.round(curWx.pressureHpa) + " hPa");
+        setM("Wind", compass(curWx.windDirDeg) + " " + Math.round(curWx.windKmh * 0.621) + " mph");
+        setM("Gust", Double.isNaN(curWx.windGust) ? "—" : Math.round(curWx.windGust * 0.621) + " mph");
+        setM("UV", Double.isNaN(curWx.uvIndex) ? "—" : String.valueOf((int) Math.round(curWx.uvIndex)));
+        setM("UV Max", Double.isNaN(curWx.uvMax) ? "—" : String.valueOf((int) Math.round(curWx.uvMax)));
+        setM("Visibility", Double.isNaN(curWx.visibilityM) ? "—" : Math.round(curWx.visibilityM / 1609.0) + " mi");
+        setM("Cloud L/M/H", curWx.cloudLow < 0 ? "—" : curWx.cloudLow + "/" + curWx.cloudMid + "/" + curWx.cloudHigh);
+        setM("CAPE", Double.isNaN(curWx.cape) ? "—" : Math.round(curWx.cape) + "");
+        setM("Precip %", Double.isNaN(curWx.precipProb) ? "—" : (int) curWx.precipProb + "%");
+        setM("AQI", curWx.aqi < 0 ? "—" : String.valueOf(curWx.aqi));
+        setM("PM2.5", Double.isNaN(curWx.pm25) ? "—" : String.format(Locale.US, "%.0f", curWx.pm25));
+        setM("Sunrise", curWx.sunriseSec < 0 ? "—" : hm(curWx.sunriseSec));
+        setM("Sunset", curWx.sunsetSec < 0 ? "—" : hm(curWx.sunsetSec));
+        buildForecast();
+        updateRadar();
+    }
+
+    private void setM(String k, String v) { TextView t = metricViews.get(k); if (t != null) t.setText(v); }
+    private void setMC(String k, String v, int color) { TextView t = metricViews.get(k); if (t != null) { t.setText(v); t.setTextColor(color); } }
+
+    private double radarLat = Double.NaN, radarLon = Double.NaN;
+    private void updateRadar() {
+        if (radar == null || curLoc == null) return;
+        if (!Double.isNaN(radarLat) && Math.abs(radarLat - curLoc.lat) < 0.05 && Math.abs(radarLon - curLoc.lon) < 0.05) return;
+        radarLat = curLoc.lat; radarLon = curLoc.lon;
+        String url = "https://embed.windy.com/embed2.html?lat=" + curLoc.lat + "&lon=" + curLoc.lon
+                + "&detailLat=" + curLoc.lat + "&detailLon=" + curLoc.lon
+                + "&zoom=7&level=surface&overlay=radar&product=radar&menu=&message=true&marker=true"
+                + "&calendar=&pressure=&type=map&location=coordinates&detail=&metricWind=mph&metricTemp=%C2%B0F&radarRange=-1";
+        radar.loadUrl(url);
+    }
+
+    private void buildForecast() {
+        if (forecastStrip == null) return;
+        forecastStrip.removeAllViews();
+        if (!theme.showForecast || curWx == null || curWx.fcDay == null) return;
+        int n = curWx.fcDay.length;
+        for (int i = 0; i < n; i++) {
+            LinearLayout cell = new LinearLayout(this);
+            cell.setOrientation(LinearLayout.VERTICAL);
+            cell.setGravity(Gravity.CENTER);
+            cell.setPadding(dp(14), dp(2), dp(14), dp(2));
+            TextView day = new TextView(this);
+            day.setTypeface(Fonts.body);
+            day.setTextColor(theme.textDimColor);
+            day.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            day.setLetterSpacing(0.08f);
+            day.setGravity(Gravity.CENTER);
+            day.setText(curWx.fcDay[i].toUpperCase(Locale.getDefault()));
+            TextView g = new TextView(this);
+            g.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
+            g.setGravity(Gravity.CENTER);
+            g.setText(Wx.glyph(curWx.fcCode[i]));
+            TextView hiT = new TextView(this); hiT.setTypeface(Fonts.body); hiT.setTextSize(TypedValue.COMPLEX_UNIT_SP,14);
+            TextView loT = new TextView(this); loT.setTypeface(Fonts.body); loT.setTextSize(TypedValue.COMPLEX_UNIT_SP,14);
+            if (!Double.isNaN(curWx.fcMax[i])) { hiT.setText(f(curWx.fcMax[i]) + "°"); hiT.setTextColor(Semantic.temp(f(curWx.fcMax[i]))); }
+            if (!Double.isNaN(curWx.fcMin[i])) { loT.setText(f(curWx.fcMin[i]) + "°"); loT.setTextColor(Semantic.temp(f(curWx.fcMin[i]))); }
+            LinearLayout hlRow = new LinearLayout(this); hlRow.setOrientation(LinearLayout.HORIZONTAL); hlRow.setGravity(Gravity.CENTER);
+            TextView slash = new TextView(this); slash.setText("  /  "); slash.setTextColor(theme.textDimColor); slash.setTextSize(TypedValue.COMPLEX_UNIT_SP,13);
+            hlRow.addView(hiT); hlRow.addView(slash); hlRow.addView(loT);
+            cell.addView(day); cell.addView(g); cell.addView(hlRow);
+            LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            forecastStrip.addView(cell, clp);
         }
     }
 
     private static int f(double c) { return (int) Math.round(c * 9 / 5 + 32); }
+    private static String hm(int sec) {
+        int h = sec / 3600, m = (sec % 3600) / 60; String ap = h < 12 ? "a" : "p";
+        int h12 = h % 12; if (h12 == 0) h12 = 12;
+        return h12 + ":" + String.format(Locale.US, "%02d", m) + ap;
+    }
     private static String compass(double deg) {
         String[] d = {"N","NE","E","SE","S","SW","W","NW"};
         return d[(int) Math.round(deg / 45.0) % 8];
@@ -471,7 +636,10 @@ public class LauncherActivity extends Activity {
             }
             vh.card.setBackground(Glass.card(theme.surfaceColor, accentNow, false, rad));
             vh.card.setOnClickListener(v -> {
-                try { if (t.launch != null) startActivity(t.launch); } catch (Exception ignored) {}
+                try {
+                    usage.record(usageKey(t));   // learn what gets used
+                    if (t.launch != null) startActivity(t.launch);
+                } catch (Exception ignored) {}
             });
             vh.card.setOnFocusChangeListener((v, has) -> {
                 int ring = (theme.weather && curWx != null && curWx.isFreezing())

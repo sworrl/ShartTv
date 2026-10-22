@@ -74,16 +74,31 @@ public class SettingsActivity extends Activity {
         loc.setTextColor(t.textDimColor); loc.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         loc.setPadding(0, dp(8), 0, 0);
         col.addView(loc);
+        section("Learning (used apps & sources)");
+        toggleRow("Auto-promote on", "Off", t.autoPromote, v -> { t.autoPromote = !t.autoPromote; commit(); });
+        toggleRow("Most-used row on", "Off", t.showMostUsed, v -> { t.showMostUsed = !t.showMostUsed; commit(); });
+        section("Forecast strip");
+        toggleRow("On", "Off", t.showForecast, v -> { t.showForecast = !t.showForecast; commit(); });
         section("Tile corners");
         stepRow(() -> t.cornerRadiusDp + " dp",
                 v -> { t.cornerRadiusDp = Math.max(0, t.cornerRadiusDp - 2); commit(); },
                 v -> { t.cornerRadiusDp = Math.min(40, t.cornerRadiusDp + 2); commit(); });
         section("Tile size");
-        stepRow(() -> t.tileWidthDp + "x" + t.tileHeightDp,
-                v -> { t.tileWidthDp = Math.max(120, t.tileWidthDp - 20);
-                       t.tileHeightDp = Math.max(72, t.tileHeightDp - 12); commit(); },
-                v -> { t.tileWidthDp = Math.min(360, t.tileWidthDp + 20);
-                       t.tileHeightDp = Math.min(220, t.tileHeightDp + 12); commit(); });
+        stepRow(() -> t.tileWidthDp + "x" + t.tileHeightDp + " dp",
+                v -> { t.tileWidthDp = Math.max(110, t.tileWidthDp - 12);
+                       t.tileHeightDp = Math.max(62, t.tileHeightDp - 7); commit(); },
+                v -> { t.tileWidthDp = Math.min(340, t.tileWidthDp + 12);
+                       t.tileHeightDp = Math.min(200, t.tileHeightDp + 7); commit(); });
+        LinearLayout presets = new LinearLayout(this);
+        presets.setOrientation(LinearLayout.HORIZONTAL);
+        Button stock = mkButton("Match stock (168x94)");
+        stock.setOnClickListener(v -> { t.tileWidthDp = 168; t.tileHeightDp = 94; commit(); });
+        Button compact = mkButton("Compact (132x74)");
+        compact.setOnClickListener(v -> { t.tileWidthDp = 132; t.tileHeightDp = 74; commit(); });
+        Button big = mkButton("Large (224x126)");
+        big.setOnClickListener(v -> { t.tileWidthDp = 224; t.tileHeightDp = 126; commit(); });
+        presets.addView(stock); presets.addView(compact); presets.addView(big);
+        col.addView(presets);
 
         Button done = mkButton("Done");
         done.setOnClickListener(v -> finish());

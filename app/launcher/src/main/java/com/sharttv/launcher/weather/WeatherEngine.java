@@ -55,10 +55,13 @@ public class WeatherEngine {
         while (running) {
             try {
                 Loc loc = resolveLocation();
+                android.util.Log.i("ShartWx", "loc=" + (loc==null?"null":(loc.source+" "+loc.lat+","+loc.lon)));
                 if (loc != null && loc.valid) {
                     Wx wx = fetchWeather(loc.lat, loc.lon);
+                    android.util.Log.i("ShartWx", "fetch=" + (wx==null?"NULL":("ok code="+wx.code+" fcDays="+(wx.fcDay==null?0:wx.fcDay.length))));
                     if (wx != null) {
                         wx.lat = loc.lat; wx.lon = loc.lon; wx.place = loc.place;
+                        fetchAqi(wx, loc.lat, loc.lon);
                         wx.classify();
                         cache(wx, loc);
                         final Wx fw = wx; final Loc fl = loc;
@@ -169,14 +172,31 @@ public class WeatherEngine {
 
     // ---------- Weather ----------
 
+    private void fetchAqi(Wx w, double lat, double lon) {
+        try {
+            String url = "https://air-quality-api.open-meteo.com/v1/air-quality?latitude="
+                    + String.format(java.util.Locale.US, "%.4f", lat) + "&longitude="
+                    + String.format(java.util.Locale.US, "%.4f", lon) + "&current=us_aqi,pm2_5";
+            HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+            c.setConnectTimeout(3000); c.setReadTimeout(4000);
+            if (c.getResponseCode() != 200) return;
+            JSONObject cur = new JSONObject(readAll(c)).optJSONObject("current");
+            if (cur != null) { w.aqi = cur.optInt("us_aqi", -1); w.pm25 = cur.optDouble("pm2_5", Double.NaN); }
+        } catch (Exception ignored) {}
+    }
+
     private Wx fetchWeather(double lat, double lon) {
         try {
             String url = "https://api.open-meteo.com/v1/forecast?latitude="
                     + String.format(java.util.Locale.US, "%.4f", lat) + "&longitude="
                     + String.format(java.util.Locale.US, "%.4f", lon)
                     + "&current=temperature_2m,apparent_temperature,relative_humidity_2m,is_day,"
-                    + "precipitation,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m,wind_gusts_10m"
-                    + "&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=auto";
+                    + "precipitation,weather_code,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,"
+                    + "dew_point_2m,pressure_msl,surface_pressure,visibility,uv_index,cape,"
+                    + "wind_speed_10m,wind_direction_10m,wind_gusts_10m"
+                    + "&hourly=precipitation_probability"
+                    + "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,"
+                    + "precipitation_probability_max&forecast_days=6&timezone=auto";
             HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
             c.setConnectTimeout(4000); c.setReadTimeout(5000);
             c.setRequestProperty("User-Agent", "ShartTV/0.1");
@@ -194,16 +214,48 @@ public class WeatherEngine {
             w.windKmh = cur.optDouble("wind_speed_10m", 0);
             w.windGust = cur.optDouble("wind_gusts_10m", 0);
             w.windDirDeg = cur.optDouble("wind_direction_10m", 0);
+            w.dewC = cur.optDouble("dew_point_2m", Double.NaN);
+            w.pressureHpa = cur.optDouble("pressure_msl", Double.NaN);
+            w.surfacePressureHpa = cur.optDouble("surface_pressure", Double.NaN);
+            w.visibilityM = cur.optDouble("visibility", Double.NaN);
+            w.uvIndex = cur.optDouble("uv_index", Double.NaN);
+            w.cape = cur.optDouble("cape", Double.NaN);
+            w.cloudLow = cur.optInt("cloud_cover_low", -1);
+            w.cloudMid = cur.optInt("cloud_cover_mid", -1);
+            w.cloudHigh = cur.optInt("cloud_cover_high", -1);
             org.json.JSONObject daily = root.optJSONObject("daily");
             if (daily != null) {
                 org.json.JSONArray hi = daily.optJSONArray("temperature_2m_max");
                 org.json.JSONArray lo = daily.optJSONArray("temperature_2m_min");
                 if (hi != null && hi.length() > 0) w.tempMaxC = hi.optDouble(0, Double.NaN);
                 if (lo != null && lo.length() > 0) w.tempMinC = lo.optDouble(0, Double.NaN);
+                org.json.JSONArray sr = daily.optJSONArray("sunrise");
+                org.json.JSONArray ss = daily.optJSONArray("sunset");
+                if (sr != null && sr.length() > 0) w.sunriseSec = hhmmToSec(sr.optString(0, null));
+                if (ss != null && ss.length() > 0) w.sunsetSec = hhmmToSec(ss.optString(0, null));
+                org.json.JSONArray uvm = daily.optJSONArray("uv_index_max");
+                if (uvm != null && uvm.length() > 0) w.uvMax = uvm.optDouble(0, Double.NaN);
+                org.json.JSONArray ppm = daily.optJSONArray("precipitation_probability_max");
+                if (ppm != null && ppm.length() > 0) w.precipProb = ppm.optDouble(0, Double.NaN);
+                org.json.JSONArray dcode = daily.optJSONArray("weather_code");
+                org.json.JSONArray dtime = daily.optJSONArray("time");
+                int nd = dtime != null ? Math.min(5, dtime.length()) : 0;
+                if (nd > 1) {
+                    int days = nd - 1;  // skip today (index 0); show the next days
+                    w.fcDay = new String[days]; w.fcCode = new int[days];
+                    w.fcMax = new double[days]; w.fcMin = new double[days];
+                    for (int d = 0; d < days; d++) {
+                        int idx = d + 1;
+                        w.fcDay[d] = dayAbbrev(dtime.optString(idx, ""));
+                        w.fcCode[d] = dcode != null ? dcode.optInt(idx, 0) : 0;
+                        w.fcMax[d] = hi != null ? hi.optDouble(idx, Double.NaN) : Double.NaN;
+                        w.fcMin[d] = lo != null ? lo.optDouble(idx, Double.NaN) : Double.NaN;
+                    }
+                }
             }
             w.fetchedAt = System.currentTimeMillis();
             return w;
-        } catch (Exception e) { return null; }
+        } catch (Exception e) { android.util.Log.e("ShartWx", "fetch err", e); return null; }
     }
 
     // ---------- Cache ----------
@@ -251,6 +303,15 @@ public class WeatherEngine {
         StringBuilder sb = new StringBuilder(); String line;
         while ((line = r.readLine()) != null) sb.append(line);
         r.close(); return sb.toString();
+    }
+
+    /** "2026-09-26" -> "Fri". */
+    private static String dayAbbrev(String ymd) {
+        try {
+            java.text.SimpleDateFormat in = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US);
+            java.util.Date d = in.parse(ymd.length() >= 10 ? ymd.substring(0, 10) : ymd);
+            return new java.text.SimpleDateFormat("EEE", java.util.Locale.getDefault()).format(d);
+        } catch (Exception e) { return ""; }
     }
 
     /** "2026-09-26T17:13:46" or "17:13" -> seconds since local midnight, -1 on failure. */

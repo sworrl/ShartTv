@@ -7,6 +7,11 @@ package com.sharttv.launcher.weather;
 public class Wx {
     public double tempC, feelsC, precipMm, windKmh, windGust, cloudPct, windDirDeg;
     public double tempMaxC = Double.NaN, tempMinC = Double.NaN;
+    public double dewC = Double.NaN, pressureHpa = Double.NaN, surfacePressureHpa = Double.NaN;
+    public double visibilityM = Double.NaN, uvIndex = Double.NaN, cape = Double.NaN;
+    public int cloudLow = -1, cloudMid = -1, cloudHigh = -1;
+    public double precipProb = Double.NaN, uvMax = Double.NaN;
+    public int sunriseSec = -1, sunsetSec = -1, aqi = -1; public double pm25 = Double.NaN;
     public int code = -1, humidity;
     public boolean isDay = true;
     public long fetchedAt;
@@ -51,4 +56,22 @@ public class Wx {
 
     /** True when it is cold enough that surfaces should read frosty regardless of precip. */
     public boolean isFreezing() { return tempC <= 1.0; }
+
+    // Compact multi-day forecast (filled by the engine; may be null before first live fetch).
+    public String[] fcDay;   // "Fri","Sat",...
+    public int[] fcCode;     // WMO code per day
+    public double[] fcMax, fcMin;
+
+    /** WMO code -> single glyph for the forecast strip. */
+    public static String glyph(int c) {
+        if (c == 0 || c == 1) return "\u2600";
+        if (c == 2) return "\u26C5";
+        if (c == 3) return "\u2601";
+        if (c == 45 || c == 48) return "\uD83C\uDF2B";
+        if (c >= 51 && c <= 57) return "\uD83C\uDF26";
+        if ((c >= 61 && c <= 65) || (c >= 80 && c <= 82) || c == 66 || c == 67) return "\uD83C\uDF27";
+        if ((c >= 71 && c <= 77) || c == 85 || c == 86) return "\uD83C\uDF28";
+        if (c >= 95) return "\u26C8";
+        return "\uD83C\uDF24";
+    }
 }

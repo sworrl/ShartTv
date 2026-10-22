@@ -18,15 +18,19 @@ public class Theme {
     public int textDimColor = Color.parseColor("#9AA4B2");
 
     public String bgImagePath = "";      // optional full-screen wallpaper (file path or content uri)
-    public int cornerRadiusDp = 26;      // tile corner rounding
+    public int cornerRadiusDp = 18;      // tile corner rounding
     public boolean focusScale = true;    // scale-up animation on focus
     public float focusScaleAmount = 1.12f;
     public int focusAnimMs = 140;
     public String listStyle = "rows";    // "rows" (horizontal shelves) or "grid"
     public boolean weather = true;       // weather + time-of-day backdrop
+    public boolean autoPromote = true;   // sort rows by learned usage (most-used first)
+    public boolean showMostUsed = true;  // show a "Most used" row at top
+    public boolean showForecast = true;  // multi-day forecast strip in the hero
+    public boolean radar = true;         // Windy radar inlay in the hero
     public String iconStyle = "banner";  // "banner" (wide app banner) or "icon" (square app icon)
-    public int tileWidthDp = 240;        // banner tile width
-    public int tileHeightDp = 140;
+    public int tileWidthDp = 168;        // banner tile width
+    public int tileHeightDp = 94;
 
     private static final String FILE = "theme.json";
 
@@ -52,6 +56,10 @@ public class Theme {
             t.focusAnimMs = o.optInt("focusAnimMs", t.focusAnimMs);
             t.listStyle = o.optString("listStyle", t.listStyle);
             t.weather = o.optBoolean("weather", t.weather);
+            t.autoPromote = o.optBoolean("autoPromote", t.autoPromote);
+            t.showMostUsed = o.optBoolean("showMostUsed", t.showMostUsed);
+            t.showForecast = o.optBoolean("showForecast", t.showForecast);
+            t.radar = o.optBoolean("radar", t.radar);
             t.iconStyle = o.optString("iconStyle", t.iconStyle);
             t.tileWidthDp = o.optInt("tileWidthDp", t.tileWidthDp);
             t.tileHeightDp = o.optInt("tileHeightDp", t.tileHeightDp);
@@ -74,6 +82,10 @@ public class Theme {
             o.put("focusAnimMs", focusAnimMs);
             o.put("listStyle", listStyle);
             o.put("weather", weather);
+            o.put("autoPromote", autoPromote);
+            o.put("showMostUsed", showMostUsed);
+            o.put("showForecast", showForecast);
+            o.put("radar", radar);
             o.put("iconStyle", iconStyle);
             o.put("tileWidthDp", tileWidthDp);
             o.put("tileHeightDp", tileHeightDp);

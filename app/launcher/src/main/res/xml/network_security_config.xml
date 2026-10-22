@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Shart TV network security.
-  Only two destinations are ever contacted:
-    1. api.open-meteo.com  - weather. TLS enforced + SPKI-PINNED below. No cleartext.
-    2. your own BeaconFix on the LAN - location. HTTP on the LAN by design (the bearer-token
-       exchange is encrypted separately); allowed via the base config.
-  User-installed / MITM CAs are NOT trusted anywhere (system anchors only), so a rogue CA can't
-  silently intercept. For a stricter posture, point beaconfixUrl at its TLS endpoint and set
-  cleartextTrafficPermitted="false" in the base-config.
+  Destinations: Open-Meteo + Windy (weather/radar) over TLS, and your own BeaconFix on the LAN.
+  Hardening kept: user-installed / MITM CAs are NOT trusted anywhere (system anchors only), so a
+  rogue CA can't silently intercept. Cleartext is allowed only so the LAN BeaconFix (plain HTTP
+  on the LAN by design) works.
+  SSL PINNING NOTE: we do NOT pin the public weather APIs. They carry no secrets and no auth, and
+  their Let's Encrypt certs rotate on a ~60-day cycle, which broke live weather when pinned. For a
+  no-auth public endpoint, pinning buys almost no security while guaranteeing periodic outages.
+  (If a future endpoint carries the owner's credentials, pin THAT one via a <domain-config>.)
 -->
 <network-security-config>
   <base-config cleartextTrafficPermitted="true">
@@ -15,17 +16,4 @@
       <certificates src="system"/>
     </trust-anchors>
   </base-config>
-
-  <domain-config cleartextTrafficPermitted="false">
-    <domain includeSubdomains="true">open-meteo.com</domain>
-    <trust-anchors><certificates src="system"/></trust-anchors>
-    <pin-set expiration="2026-12-31">
-      <!-- leaf *.open-meteo.com -->
-      <pin digest="SHA-256">6o7KDyTd/bfriC8vK00HJHuwKHo31XxNfNnukATYm+U=</pin>
-      <!-- Let's Encrypt intermediate (rotates less often) -->
-      <pin digest="SHA-256">s/tdAOmUzd8syaTuqfgGvFcn6DzA5Cmb+Vby1ST+U3Y=</pin>
-      <!-- ISRG Root X2 (stable for years; backstop so cert rotation won't break weather) -->
-      <pin digest="SHA-256">diGVwiVYbubAI3RW4hB9xU8e/CH2GnkuvVFZE8zmgzI=</pin>
-    </pin-set>
-  </domain-config>
 </network-security-config>
