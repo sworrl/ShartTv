@@ -1,0 +1,5 @@
+Bundled fonts are under the SIL Open Font License 1.1 (OFL):
+- Cinzel (cinzel.ttf) — Natanael Gama. https://fonts.google.com/specimen/Cinzel
+- EB Garamond (garamond.ttf) — Georg Duffner, Octavio Pardo. https://fonts.google.com/specimen/EB+Garamond
+- UnifrakturCook (blackletter.ttf) — j. 'mach' wust et al. https://fonts.google.com/specimen/UnifrakturCook
+Full OFL text: https://openfontlicense.org

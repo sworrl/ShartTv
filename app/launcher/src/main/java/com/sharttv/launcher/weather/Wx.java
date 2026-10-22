@@ -5,7 +5,8 @@ package com.sharttv.launcher.weather;
  * arcobocconotto weather engine (Open-Meteo WMO codes). Kept lightweight: plain fields, no deps.
  */
 public class Wx {
-    public double tempC, feelsC, precipMm, windKmh, windGust, cloudPct;
+    public double tempC, feelsC, precipMm, windKmh, windGust, cloudPct, windDirDeg;
+    public double tempMaxC = Double.NaN, tempMinC = Double.NaN;
     public int code = -1, humidity;
     public boolean isDay = true;
     public long fetchedAt;

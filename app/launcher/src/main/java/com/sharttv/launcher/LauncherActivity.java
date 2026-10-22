@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -22,18 +23,24 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import com.sharttv.launcher.ui.Fonts;
+import com.sharttv.launcher.ui.Glass;
 import com.sharttv.launcher.weather.Loc;
 import com.sharttv.launcher.weather.TimeSky;
 import com.sharttv.launcher.weather.WeatherEngine;
 import com.sharttv.launcher.weather.WeatherView;
 import com.sharttv.launcher.weather.Wx;
 import java.io.FileInputStream;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 /**
- * Shart TV launcher home. Ad-free, no network. Shelves: Inputs, Apps, Settings.
- * Appearance is driven entirely by Theme (colors, wallpaper, tile shape, focus animation, style).
+ * Shart TV launcher home. Ad-free, rich, liquid-glass + classical/gothic. A live weather + time-of-
+ * day backdrop, a glass top bar (clock + weather), a weather hero with real readings, and glass
+ * cards for inputs, apps and settings.
  */
 public class LauncherActivity extends Activity {
 
@@ -47,13 +54,20 @@ public class LauncherActivity extends Activity {
     private WeatherEngine engine;
     private Wx curWx;
     private Loc curLoc;
-    private TextView readout;
+
+    // chrome
+    private TextView barClock, barDate, barWx;
+    private TextView heroTemp, heroCond, heroPlace, heroMetrics;
+    private int accentNow;
+
     private final android.os.Handler sky = new android.os.Handler();
     private final Runnable skyTick = new Runnable() {
         @Override public void run() {
             TimeSky.Sky s = TimeSky.now(curLoc);
             int tint = TimeSky.weatherAdjust(s.tint, curWx);
+            accentNow = s.accent;
             if (weatherView != null) weatherView.setTint(tint);
+            updateChrome();
             sky.postDelayed(this, 1000);   // once a second: cheap, never the same twice
         }
     };
@@ -62,13 +76,15 @@ public class LauncherActivity extends Activity {
 
     @Override protected void onCreate(Bundle s) {
         super.onCreate(s);
+        Fonts.load(this);
+        Glass.init(this);
         theme = Theme.load(this);
+        accentNow = theme.accentColor;
         buildUi();
     }
 
     @Override protected void onResume() {
         super.onResume();
-        // Re-read theme + app list each time we return (apps may have changed, theme may be edited).
         theme = Theme.load(this);
         buildUi();
         if (theme.weather) {
@@ -77,13 +93,16 @@ public class LauncherActivity extends Activity {
                 engine.setListener((wx, loc) -> {
                     curWx = wx; curLoc = loc;
                     if (weatherView != null) weatherView.setWeather(wx);
-                    updateReadout();
+                    updateChrome();
                 });
             }
             engine.start();
             sky.removeCallbacks(skyTick);
             sky.post(skyTick);
             if (weatherView != null) weatherView.startAnim();
+        } else {
+            sky.removeCallbacks(skyTick);
+            sky.post(skyTick);   // still drive the clock
         }
     }
 
@@ -102,7 +121,6 @@ public class LauncherActivity extends Activity {
         root = new FrameLayout(this);
         root.setBackgroundColor(theme.bgColor);
 
-        // Weather + time-of-day backdrop (behind everything). Only if enabled in theme.
         if (theme.weather) {
             weatherView = new WeatherView(this);
             root.addView(weatherView, new FrameLayout.LayoutParams(
@@ -114,9 +132,20 @@ public class LauncherActivity extends Activity {
             applyWallpaper();
         }
 
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+
+        col.addView(buildTopBar(), new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        if (theme.weather) {
+            col.addView(buildHero(), new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(214)));
+        }
+
         RecyclerView shelves = new RecyclerView(this);
         shelves.setLayoutManager(new LinearLayoutManager(this, RecyclerView.VERTICAL, false));
-        shelves.setPadding(dp(48), dp(40), dp(48), dp(40));
+        shelves.setPadding(dp(48), dp(10), dp(48), dp(40));
         shelves.setClipToPadding(false);
 
         List<Section> sections = new ArrayList<>();
@@ -125,38 +154,146 @@ public class LauncherActivity extends Activity {
         if (!inputs.isEmpty()) sections.add(new Section(getString(R.string.inputs), inputs));
         sections.add(new Section(getString(R.string.apps), Repo.apps(this, theme)));
         sections.add(new Section(getString(R.string.settings), Repo.settings(this, theme)));
-
         shelves.setAdapter(new ShelfAdapter(sections));
-        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-        root.addView(shelves, lp);
+        col.addView(shelves, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
-        // live weather readout, top-right
-        if (theme.weather) {
-            readout = new TextView(this);
-            readout.setTextColor(theme.textColor);
-            readout.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
-            readout.setPadding(dp(16), dp(10), dp(16), dp(10));
-            GradientDrawable rb = new GradientDrawable();
-            rb.setColor(Color.argb(90, 0, 0, 0)); rb.setCornerRadius(dp(12));
-            readout.setBackground(rb);
-            FrameLayout.LayoutParams rl = new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            rl.gravity = Gravity.TOP | Gravity.END;
-            rl.setMargins(0, dp(28), dp(48), 0);
-            root.addView(readout, rl);
-            updateReadout();
-        }
+        root.addView(col, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         setContentView(root);
         registerInputChanged();
+        updateChrome();
     }
 
-    private void updateReadout() {
-        if (readout == null) return;
-        if (curWx == null || !curWx.valid()) { readout.setText("Shart TV"); return; }
-        String loc = (curLoc != null && curLoc.place != null && !curLoc.place.isEmpty()) ? "  ·  " + curLoc.place : "";
-        readout.setText(curWx.icon + "  " + Math.round(curWx.tempC * 9 / 5 + 32) + "°F  ·  " + curWx.name + loc);
+    // ---------- top bar ----------
+    private View buildTopBar() {
+        LinearLayout bar = new LinearLayout(this);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setPadding(dp(48), dp(18), dp(48), dp(14));
+        bar.setBackground(Glass.card(theme.surfaceColor, theme.accentColor, false, dp(2)));
+
+        LinearLayout left = new LinearLayout(this);
+        left.setOrientation(LinearLayout.VERTICAL);
+        barClock = new TextView(this);
+        barClock.setTypeface(Fonts.display, Typeface.BOLD);
+        barClock.setTextColor(theme.textColor);
+        barClock.setTextSize(TypedValue.COMPLEX_UNIT_SP, 26);
+        barClock.setLetterSpacing(0.06f);
+        barDate = new TextView(this);
+        barDate.setTypeface(Fonts.body);
+        barDate.setTextColor(theme.textDimColor);
+        barDate.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        barDate.setLetterSpacing(0.14f);
+        left.addView(barClock); left.addView(barDate);
+        bar.addView(left, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        barWx = new TextView(this);
+        barWx.setTypeface(Fonts.body);
+        barWx.setTextColor(theme.textColor);
+        barWx.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+        barWx.setGravity(Gravity.END);
+        bar.addView(barWx, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        return bar;
+    }
+
+    // ---------- weather hero ----------
+    private View buildHero() {
+        FrameLayout wrap = new FrameLayout(this);
+        wrap.setBackground(Glass.card(theme.surfaceColor, theme.accentColor, false, dp(26)));
+        Glass.clipRound(wrap, dp(26));
+        int pad = dp(22);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(pad + dp(20), pad, pad + dp(20), pad);
+
+        LinearLayout leftc = new LinearLayout(this);
+        leftc.setOrientation(LinearLayout.VERTICAL);
+        heroTemp = new TextView(this);
+        heroTemp.setTypeface(Fonts.display, Typeface.BOLD);
+        heroTemp.setTextColor(theme.textColor);
+        heroTemp.setTextSize(TypedValue.COMPLEX_UNIT_SP, 54);
+        heroCond = new TextView(this);
+        heroCond.setTypeface(Fonts.display);
+        heroCond.setTextColor(theme.accentColor);
+        heroCond.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+        heroCond.setLetterSpacing(0.04f);
+        heroPlace = new TextView(this);
+        heroPlace.setTypeface(Fonts.body);
+        heroPlace.setTextColor(theme.textDimColor);
+        heroPlace.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        leftc.addView(heroTemp); leftc.addView(heroCond); leftc.addView(heroPlace);
+        row.addView(leftc, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        View div = new View(this);
+        div.setBackground(Glass.divider(Glass.withAlpha(theme.accentColor, 0x88)));
+        LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(dp(2), dp(120));
+        dlp.setMargins(dp(10), 0, dp(24), 0);
+        // vertical divider: reuse horizontal one rotated is overkill; a thin accent line is fine
+        GradientDrawable vd = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[]{Glass.withAlpha(theme.accentColor,0), Glass.withAlpha(theme.accentColor,0x99), Glass.withAlpha(theme.accentColor,0)});
+        div.setBackground(vd);
+        row.addView(div, dlp);
+
+        heroMetrics = new TextView(this);
+        heroMetrics.setTypeface(Fonts.body);
+        heroMetrics.setTextColor(theme.textColor);
+        heroMetrics.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
+        heroMetrics.setLineSpacing(dp(4), 1f);
+        row.addView(heroMetrics, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        wrap.addView(row, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        FrameLayout.LayoutParams outer = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        // margin so the hero floats
+        LinearLayout holder = new LinearLayout(this);
+        holder.setPadding(dp(48), dp(14), dp(48), dp(6));
+        holder.addView(wrap, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        return holder;
+    }
+
+    private void updateChrome() {
+        Date now = new Date();
+        if (barClock != null) barClock.setText(new SimpleDateFormat("h:mm", Locale.getDefault()).format(now));
+        if (barDate != null) barDate.setText(new SimpleDateFormat("EEEE, MMMM d", Locale.getDefault()).format(now).toUpperCase(Locale.getDefault()));
+        boolean haveWx = curWx != null && curWx.valid();
+        if (barWx != null) {
+            barWx.setText(haveWx ? curWx.icon + "   " + f(curWx.tempC) + "°  ·  " + curWx.name
+                                 : "Shart TV");
+        }
+        if (heroTemp != null) {
+            if (haveWx) {
+                heroTemp.setText(f(curWx.tempC) + "°");
+                heroCond.setText(curWx.name);
+                heroPlace.setText((curLoc != null && curLoc.place != null && !curLoc.place.isEmpty())
+                        ? curLoc.place : "");
+                StringBuilder m = new StringBuilder();
+                m.append("Feels  ").append(f(curWx.feelsC)).append("°\n");
+                if (!Double.isNaN(curWx.tempMaxC) && !Double.isNaN(curWx.tempMinC))
+                    m.append("High ").append(f(curWx.tempMaxC)).append("°   Low ").append(f(curWx.tempMinC)).append("°\n");
+                if (curWx.humidity > 0) m.append("Humidity  ").append(curWx.humidity).append("%\n");
+                m.append("Wind  ").append(compass(curWx.windDirDeg)).append(" ")
+                 .append(Math.round(curWx.windKmh * 0.621)).append(" mph");
+                heroMetrics.setText(m.toString());
+            } else {
+                heroTemp.setText("—");
+                heroCond.setText("Weather");
+                heroPlace.setText("waiting for a location fix");
+                heroMetrics.setText("Set a BeaconFix URL or manual\nlat/lon in Appearance.");
+            }
+        }
+    }
+
+    private static int f(double c) { return (int) Math.round(c * 9 / 5 + 32); }
+    private static String compass(double deg) {
+        String[] d = {"N","NE","E","SE","S","SW","W","NW"};
+        return d[(int) Math.round(deg / 45.0) % 8];
     }
 
     private void applyWallpaper() {
@@ -174,7 +311,6 @@ public class LauncherActivity extends Activity {
                 bg.setImageDrawable(d);
                 root.addView(bg, new FrameLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-                // dim overlay for legibility
                 View dim = new View(this);
                 dim.setBackgroundColor(Color.argb(140, 0, 0, 0));
                 root.addView(dim, new FrameLayout.LayoutParams(
@@ -183,7 +319,6 @@ public class LauncherActivity extends Activity {
         } catch (Exception ignored) {}
     }
 
-    // ---- last-input-first: listen for Sony's INPUT_CHANGED broadcast (no permission needed) ----
     private void registerInputChanged() {
         if (inputChanged != null) return;
         inputChanged = new BroadcastReceiver() {
@@ -221,36 +356,50 @@ public class LauncherActivity extends Activity {
         ShelfAdapter(List<Section> d) { data = d; }
 
         class VH extends RecyclerView.ViewHolder {
-            TextView header; RecyclerView row;
-            VH(LinearLayout v, TextView h, RecyclerView r) { super(v); header = h; row = r; }
+            TextView header; View rule; RecyclerView row;
+            VH(LinearLayout v, TextView h, View ru, RecyclerView r) { super(v); header = h; rule = ru; row = r; }
         }
 
         @NonNull @Override public VH onCreateViewHolder(@NonNull ViewGroup p, int vt) {
-            LinearLayout col = new LinearLayout(p.getContext());
-            col.setOrientation(LinearLayout.VERTICAL);
-            col.setLayoutParams(new RecyclerView.LayoutParams(
+            Context ctx = p.getContext();
+            LinearLayout colv = new LinearLayout(ctx);
+            colv.setOrientation(LinearLayout.VERTICAL);
+            colv.setLayoutParams(new RecyclerView.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            TextView h = new TextView(p.getContext());
-            h.setTextColor(theme.textDimColor);
-            h.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-            h.setPadding(dp(6), dp(18), 0, dp(10));
-            col.addView(h);
-            RecyclerView r = new RecyclerView(p.getContext());
+
+            LinearLayout headRow = new LinearLayout(ctx);
+            headRow.setOrientation(LinearLayout.HORIZONTAL);
+            headRow.setGravity(Gravity.CENTER_VERTICAL);
+            headRow.setPadding(dp(4), dp(16), 0, dp(8));
+            TextView h = new TextView(ctx);
+            h.setTypeface(Fonts.display, Typeface.BOLD);
+            h.setTextColor(theme.textColor);
+            h.setTextSize(TypedValue.COMPLEX_UNIT_SP, 19);
+            h.setLetterSpacing(0.12f);
+            headRow.addView(h);
+            View rule = new View(ctx);
+            rule.setBackground(Glass.divider(Glass.withAlpha(theme.accentColor, 0x77)));
+            LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(0, dp(16), 1f);
+            rlp.setMargins(dp(18), 0, dp(6), 0);
+            headRow.addView(rule, rlp);
+            colv.addView(headRow);
+
+            RecyclerView r = new RecyclerView(ctx);
             if ("grid".equals(theme.listStyle)) {
-                r.setLayoutManager(new GridLayoutManager(p.getContext(), 5));
+                r.setLayoutManager(new GridLayoutManager(ctx, 5));
             } else {
-                r.setLayoutManager(new LinearLayoutManager(p.getContext(), RecyclerView.HORIZONTAL, false));
+                r.setLayoutManager(new LinearLayoutManager(ctx, RecyclerView.HORIZONTAL, false));
             }
             r.setClipToPadding(false);
-            r.setPadding(0, dp(6), 0, dp(6));
-            col.addView(r, new LinearLayout.LayoutParams(
+            r.setPadding(0, dp(6), 0, dp(10));
+            colv.addView(r, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-            return new VH(col, h, r);
+            return new VH(colv, h, rule, r);
         }
 
         @Override public void onBindViewHolder(@NonNull VH vh, int pos) {
             Section s = data.get(pos);
-            vh.header.setText(s.title);
+            vh.header.setText(s.title.toUpperCase(Locale.getDefault()));
             vh.row.setAdapter(new TileAdapter(s.tiles));
         }
         @Override public int getItemCount() { return data.size(); }
@@ -261,8 +410,8 @@ public class LauncherActivity extends Activity {
         TileAdapter(List<Tile> t) { tiles = t; }
 
         class VH extends RecyclerView.ViewHolder {
-            FrameLayout card; ImageView img; TextView label;
-            VH(View v, FrameLayout c, ImageView i, TextView l) { super(v); card = c; img = i; label = l; }
+            FrameLayout card; ImageView img; TextView glyph; TextView label;
+            VH(View v, FrameLayout c, ImageView i, TextView g, TextView l) { super(v); card = c; img = i; glyph = g; label = l; }
         }
 
         @NonNull @Override public VH onCreateViewHolder(@NonNull ViewGroup p, int vt) {
@@ -271,12 +420,14 @@ public class LauncherActivity extends Activity {
             wrap.setOrientation(LinearLayout.VERTICAL);
             int w = dp(theme.tileWidthDp);
             RecyclerView.LayoutParams wlp = new RecyclerView.LayoutParams(w, ViewGroup.LayoutParams.WRAP_CONTENT);
-            wlp.setMargins(dp(8), dp(8), dp(8), dp(8));
+            wlp.setMargins(dp(10), dp(8), dp(10), dp(8));
             wrap.setLayoutParams(wlp);
 
             FrameLayout card = new FrameLayout(c);
             card.setLayoutParams(new LinearLayout.LayoutParams(w, dp(theme.tileHeightDp)));
-            card.setBackground(tileShape(false));
+            float rad = dp(theme.cornerRadiusDp);
+            card.setBackground(Glass.card(theme.surfaceColor, accentNow, false, rad));
+            Glass.clipRound(card, rad);
             card.setFocusable(true);
             card.setFocusableInTouchMode(true);
 
@@ -285,57 +436,55 @@ public class LauncherActivity extends Activity {
             card.addView(img, new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
+            TextView glyph = new TextView(c);   // for inputs/settings: a centered gothic label
+            glyph.setTypeface(Fonts.display, Typeface.BOLD);
+            glyph.setTextColor(theme.textColor);
+            glyph.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
+            glyph.setGravity(Gravity.CENTER);
+            glyph.setLetterSpacing(0.05f);
+            card.addView(glyph, new FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
             TextView label = new TextView(c);
+            label.setTypeface(Fonts.body);
             label.setTextColor(theme.textColor);
-            label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
             label.setMaxLines(1);
-            label.setPadding(dp(4), dp(6), dp(4), 0);
+            label.setPadding(dp(6), dp(8), dp(6), 0);
             label.setGravity(Gravity.START);
 
             wrap.addView(card);
             wrap.addView(label);
-            return new VH(wrap, card, img, label);
+            return new VH(wrap, card, img, glyph, label);
         }
 
         @Override public void onBindViewHolder(@NonNull VH vh, int pos) {
             final Tile t = tiles.get(pos);
+            final float rad = dp(theme.cornerRadiusDp);
             vh.label.setText(t.label);
-            if (t.icon != null) vh.img.setImageDrawable(t.icon);
-            vh.img.setColorFilter(null);
-            // Inputs / settings use a glyph-free tinted card with centered label inside
-            if (t.kind != Tile.Kind.APP) {
+            if (t.kind == Tile.Kind.APP && t.icon != null) {
+                vh.img.setImageDrawable(t.icon);
+                vh.glyph.setText("");
+            } else {
                 vh.img.setImageDrawable(null);
-                vh.card.setBackground(tileShape(false));
+                vh.glyph.setText(t.label);   // gothic centered label for inputs/settings
             }
+            vh.card.setBackground(Glass.card(theme.surfaceColor, accentNow, false, rad));
             vh.card.setOnClickListener(v -> {
                 try { if (t.launch != null) startActivity(t.launch); } catch (Exception ignored) {}
             });
             vh.card.setOnFocusChangeListener((v, has) -> {
-                v.setBackground(tileShape(has));
+                int ring = (theme.weather && curWx != null && curWx.isFreezing())
+                        ? Color.parseColor("#9FE8FF") : accentNow;
+                v.setBackground(Glass.card(theme.surfaceColor, ring, has, rad));
                 if (theme.focusScale) {
-                    float sc = has ? theme.focusScaleAmount : 1f;
-                    v.animate().scaleX(sc).scaleY(sc).setDuration(theme.focusAnimMs).start();
-                    vh.label.setTextColor(has ? theme.accentColor : theme.textColor);
+                    float scv = has ? theme.focusScaleAmount : 1f;
+                    v.animate().scaleX(scv).scaleY(scv).setDuration(theme.focusAnimMs).start();
+                    v.setElevation(has ? dp(10) : 0);
                 }
+                vh.label.setTextColor(has ? accentNow : theme.textColor);
             });
         }
         @Override public int getItemCount() { return tiles.size(); }
-    }
-
-    private Drawable tileShape(boolean focused) {
-        GradientDrawable g = new GradientDrawable();
-        // Slightly translucent when weather is on, so the live condition reads through the tile.
-        int fill = theme.weather
-                ? Color.argb(0xD8, Color.red(theme.surfaceColor), Color.green(theme.surfaceColor), Color.blue(theme.surfaceColor))
-                : theme.surfaceColor;
-        g.setColor(fill);
-        g.setCornerRadius(dp(theme.cornerRadiusDp));
-        if (focused) {
-            // frosty ring when freezing, otherwise accent
-            int ring = (theme.weather && curWx != null && curWx.isFreezing())
-                    ? Color.parseColor("#9FE8FF") : theme.accentColor;
-            g.setStroke(dp(3), ring);
-        }
-        return g;
     }
 }

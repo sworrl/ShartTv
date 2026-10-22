@@ -95,8 +95,18 @@ public class WeatherEngine {
             return l;
         }
         // 4) last cached
-        return readCachedLoc();
+        Loc cached = readCachedLoc();
+        if (cached != null && cached.valid) return cached;
+        // 5) seed fallback: owner's last-known BeaconFix fix, so weather works before a live fix.
+        //    BeaconFix / manual / cache all override this automatically.
+        Loc seed = new Loc();
+        seed.valid = true; seed.lat = SEED_LAT; seed.lon = SEED_LON; seed.place = SEED_PLACE; seed.source = "seed";
+        return seed;
     }
+
+    // Owner's last-known location. Overridden by any live/real fix.
+    private static final double SEED_LAT = 0, SEED_LON = 0;
+    private static final String SEED_PLACE = "";
 
     private Loc beaconfix(String base) {
         try {
@@ -165,7 +175,8 @@ public class WeatherEngine {
                     + String.format(java.util.Locale.US, "%.4f", lat) + "&longitude="
                     + String.format(java.util.Locale.US, "%.4f", lon)
                     + "&current=temperature_2m,apparent_temperature,relative_humidity_2m,is_day,"
-                    + "precipitation,weather_code,cloud_cover,wind_speed_10m,wind_gusts_10m&timezone=auto";
+                    + "precipitation,weather_code,cloud_cover,wind_speed_10m,wind_direction_10m,wind_gusts_10m"
+                    + "&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=auto";
             HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
             c.setConnectTimeout(4000); c.setReadTimeout(5000);
             c.setRequestProperty("User-Agent", "ShartTV/0.1");
@@ -182,6 +193,14 @@ public class WeatherEngine {
             w.cloudPct = cur.optInt("cloud_cover", 0);
             w.windKmh = cur.optDouble("wind_speed_10m", 0);
             w.windGust = cur.optDouble("wind_gusts_10m", 0);
+            w.windDirDeg = cur.optDouble("wind_direction_10m", 0);
+            org.json.JSONObject daily = root.optJSONObject("daily");
+            if (daily != null) {
+                org.json.JSONArray hi = daily.optJSONArray("temperature_2m_max");
+                org.json.JSONArray lo = daily.optJSONArray("temperature_2m_min");
+                if (hi != null && hi.length() > 0) w.tempMaxC = hi.optDouble(0, Double.NaN);
+                if (lo != null && lo.length() > 0) w.tempMinC = lo.optDouble(0, Double.NaN);
+            }
             w.fetchedAt = System.currentTimeMillis();
             return w;
         } catch (Exception e) { return null; }
@@ -194,6 +213,7 @@ public class WeatherEngine {
           .putInt("w_code", w.code).putInt("w_day", w.isDay ? 1 : 0)
           .putFloat("w_temp", (float) w.tempC).putFloat("w_precip", (float) w.precipMm)
           .putFloat("w_wind", (float) w.windKmh).putInt("w_cloud", (int) w.cloudPct)
+          .putFloat("w_hi", (float) w.tempMaxC).putFloat("w_lo", (float) w.tempMinC).putFloat("w_wdir", (float) w.windDirDeg)
           .putLong("w_at", w.fetchedAt).putString("w_place", w.place)
           .putFloat("l_lat", (float) l.lat).putFloat("l_lon", (float) l.lon)
           .putInt("l_sunrise", l.sunriseSec).putInt("l_sunset", l.sunsetSec)
@@ -208,6 +228,7 @@ public class WeatherEngine {
         w.code = sp.getInt("w_code", -1); w.isDay = sp.getInt("w_day", 1) == 1;
         w.tempC = sp.getFloat("w_temp", 0); w.precipMm = sp.getFloat("w_precip", 0);
         w.windKmh = sp.getFloat("w_wind", 0); w.cloudPct = sp.getInt("w_cloud", 0);
+        w.tempMaxC = sp.getFloat("w_hi", Float.NaN); w.tempMinC = sp.getFloat("w_lo", Float.NaN); w.windDirDeg = sp.getFloat("w_wdir", 0);
         w.fetchedAt = sp.getLong("w_at", 0); w.place = sp.getString("w_place", "");
         w.classify();
         return w;

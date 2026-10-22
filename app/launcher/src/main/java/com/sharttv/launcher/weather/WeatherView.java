@@ -140,6 +140,32 @@ public class WeatherView extends View {
         p.setShader(null);
 
         String cat = wx == null ? "clear" : wx.category;
+        boolean clearish = cat.equals("clear") || cat.equals("clear_night") || cat.equals("cloudy");
+
+        // 1b) horizon glow band (warm by day, cool by night) — gives depth/artistry
+        int glow = (wx != null && wx.isDay) ? Color.argb(70, 255, 190, 120) : Color.argb(60, 90, 120, 200);
+        p.setShader(new LinearGradient(0, h * 0.5f, 0, h * 0.72f, Color.argb(0, 0, 0, 0), glow, Shader.TileMode.CLAMP));
+        cv.drawRect(0, h * 0.5f, w, h * 0.72f, p);
+        p.setShader(null);
+
+        // 1c) celestial body (sun by day / moon by night), arcing by time of day
+        if (clearish || cat.equals("overcast")) {
+            float frac = (System.currentTimeMillis() % 86400000L) / 86400000f;
+            float cx = w * (0.15f + 0.7f * frac);
+            float cy = h * (0.42f - 0.22f * (float) Math.sin(Math.PI * frac));
+            boolean day = wx == null || wx.isDay;
+            float rad = h * 0.07f;
+            // halo
+            p.setShader(new android.graphics.RadialGradient(cx, cy, rad * 3f,
+                    day ? Color.argb(80, 255, 225, 150) : Color.argb(60, 200, 220, 255),
+                    Color.argb(0, 0, 0, 0), Shader.TileMode.CLAMP));
+            cv.drawCircle(cx, cy, rad * 3f, p); p.setShader(null);
+            p.setColor(day ? Color.argb(230, 255, 236, 170) : Color.argb(220, 225, 232, 250));
+            cv.drawCircle(cx, cy, rad, p);
+            if (!day) { // moon crater shadow
+                p.setColor(shade(tint, 0.9f)); cv.drawCircle(cx + rad * 0.4f, cy - rad * 0.3f, rad * 0.92f, p);
+            }
+        }
 
         // 2) clouds/fog veils
         if (cat.equals("overcast") || cat.equals("cloudy") || cat.equals("fog") || cat.equals("storm")) {

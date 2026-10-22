@@ -18,15 +18,15 @@ public class Theme {
     public int textDimColor = Color.parseColor("#9AA4B2");
 
     public String bgImagePath = "";      // optional full-screen wallpaper (file path or content uri)
-    public int cornerRadiusDp = 14;      // tile corner rounding
+    public int cornerRadiusDp = 26;      // tile corner rounding
     public boolean focusScale = true;    // scale-up animation on focus
     public float focusScaleAmount = 1.12f;
     public int focusAnimMs = 140;
     public String listStyle = "rows";    // "rows" (horizontal shelves) or "grid"
     public boolean weather = true;       // weather + time-of-day backdrop
     public String iconStyle = "banner";  // "banner" (wide app banner) or "icon" (square app icon)
-    public int tileWidthDp = 220;        // banner tile width
-    public int tileHeightDp = 124;
+    public int tileWidthDp = 240;        // banner tile width
+    public int tileHeightDp = 140;
 
     private static final String FILE = "theme.json";
 
