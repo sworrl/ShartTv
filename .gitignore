@@ -1,0 +1,11 @@
+# Study material, not source. Pulled binaries never ship.
+apks/
+sweep/*.txt
+# Build artifacts
+app/build/
+app/.gradle/
+*.iml
+.DS_Store
+local.properties
+*.keystore
+*.jks
