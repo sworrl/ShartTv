@@ -59,5 +59,17 @@
         android:exported="true"
         android:screenOrientation="landscape"
         android:theme="@style/Theme.ShartTv"/>
+
+    <service
+        android:name=".HomeRedirectService"
+        android:exported="false"
+        android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+        android:label="Shart TV Home">
+      <intent-filter>
+        <action android:name="android.accessibilityservice.AccessibilityService"/>
+      </intent-filter>
+      <meta-data android:name="android.accessibilityservice"
+          android:resource="@xml/home_redirect_accessibility"/>
+    </service>
   </application>
 </manifest>

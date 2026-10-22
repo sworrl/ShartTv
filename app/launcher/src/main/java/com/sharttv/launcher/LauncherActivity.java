@@ -379,8 +379,9 @@ public class LauncherActivity extends Activity {
         }
         heroTemp.setText(f(curWx.tempC) + "°");
         heroCond.setText(curWx.name);
-        heroPlace.setText((curLoc != null && curLoc.place != null && !curLoc.place.isEmpty())
-                ? curLoc.place : (curLoc != null ? String.format(Locale.US,"%.2f, %.2f",curLoc.lat,curLoc.lon) : ""));
+        String placeStr = (curLoc != null && curLoc.place != null && !curLoc.place.isEmpty())
+                ? curLoc.place : (curLoc != null ? String.format(Locale.US,"%.2f, %.2f",curLoc.lat,curLoc.lon) : "");
+        heroPlace.setText(placeStr + (curWx.model != null ? "   \u00B7   " + curWx.model : ""));
         setM("Feels", f(curWx.feelsC) + "°");
         setM("Dew Pt", Double.isNaN(curWx.dewC) ? "—" : f(curWx.dewC) + "°");
         setM("Humidity", curWx.humidity > 0 ? curWx.humidity + "%" : "—");

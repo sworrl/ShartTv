@@ -61,6 +61,7 @@ public class WeatherEngine {
                     android.util.Log.i("ShartWx", "fetch=" + (wx==null?"NULL":("ok code="+wx.code+" fcDays="+(wx.fcDay==null?0:wx.fcDay.length))));
                     if (wx != null) {
                         wx.lat = loc.lat; wx.lon = loc.lon; wx.place = loc.place;
+                        fetchWindy(wx, loc.lat, loc.lon);
                         fetchAqi(wx, loc.lat, loc.lon);
                         wx.classify();
                         cache(wx, loc);
@@ -171,6 +172,65 @@ public class WeatherEngine {
     }
 
     // ---------- Weather ----------
+
+    /** Windy Point Forecast (ECMWF): overrides Open-Meteo current values with the model when keyed. */
+    private void fetchWindy(Wx w, double lat, double lon) {
+        String key = com.sharttv.launcher.BuildConfig.WINDY_POINT_KEY;
+        if (key == null || key.isEmpty()) return;
+        try {
+            JSONObject body = new JSONObject();
+            body.put("lat", lat); body.put("lon", lon);
+            body.put("model", "ecmwf");
+            body.put("parameters", new org.json.JSONArray(new String[]{
+                "temp","wind","windGust","dewpoint","rh","pressure","ptype","lclouds","mclouds","hclouds"}));
+            body.put("levels", new org.json.JSONArray(new String[]{"surface"}));
+            body.put("key", key);
+            HttpURLConnection c = (HttpURLConnection) new URL("https://api.windy.com/api/point-forecast/v2").openConnection();
+            c.setConnectTimeout(4000); c.setReadTimeout(6000); c.setRequestMethod("POST");
+            c.setRequestProperty("Content-Type", "application/json");
+            c.setDoOutput(true);
+            c.getOutputStream().write(body.toString().getBytes("UTF-8"));
+            c.getOutputStream().close();
+            if (c.getResponseCode() != 200) { android.util.Log.i("ShartWx","windy http "+c.getResponseCode()); return; }
+            JSONObject r = new JSONObject(readAll(c));
+            org.json.JSONArray ts = r.optJSONArray("ts");
+            if (ts == null || ts.length() == 0) return;
+            long nowMs = System.currentTimeMillis();
+            int idx = 0; long best = Long.MAX_VALUE;
+            for (int i = 0; i < ts.length(); i++) {
+                long d = Math.abs(ts.optLong(i) - nowMs);
+                if (d < best) { best = d; idx = i; }
+            }
+            Double temp = at(r, "temp-surface", idx);     // Kelvin
+            Double wu = at(r, "wind_u-surface", idx), wv = at(r, "wind_v-surface", idx); // m/s
+            Double gust = at(r, "gust-surface", idx);     // m/s
+            Double dew = at(r, "dewpoint-surface", idx);  // Kelvin
+            Double rh = at(r, "rh-surface", idx);         // %
+            Double pr = at(r, "pressure-surface", idx);   // Pa
+            Double lc = at(r, "lclouds-surface", idx), mc = at(r, "mclouds-surface", idx), hc = at(r, "hclouds-surface", idx);
+            if (temp != null) w.tempC = temp - 273.15;
+            if (dew != null) w.dewC = dew - 273.15;
+            if (rh != null) w.humidity = (int) Math.round(rh);
+            if (pr != null) w.pressureHpa = pr / 100.0;
+            if (wu != null && wv != null) {
+                w.windKmh = Math.sqrt(wu*wu + wv*wv) * 3.6;
+                w.windDirDeg = (Math.toDegrees(Math.atan2(-wu, -wv)) + 360) % 360;
+            }
+            if (gust != null) w.windGust = gust * 3.6;
+            if (lc != null) w.cloudLow = (int) Math.round(lc);
+            if (mc != null) w.cloudMid = (int) Math.round(mc);
+            if (hc != null) w.cloudHigh = (int) Math.round(hc);
+            w.model = "ECMWF";
+            android.util.Log.i("ShartWx", "windy ok model=ECMWF idx=" + idx);
+        } catch (Exception e) { android.util.Log.i("ShartWx", "windy err " + e.getMessage()); }
+    }
+
+    private static Double at(JSONObject r, String key, int idx) {
+        org.json.JSONArray a = r.optJSONArray(key);
+        if (a == null || idx >= a.length() || a.isNull(idx)) return null;
+        double v = a.optDouble(idx, Double.NaN);
+        return Double.isNaN(v) ? null : v;
+    }
 
     private void fetchAqi(Wx w, double lat, double lon) {
         try {

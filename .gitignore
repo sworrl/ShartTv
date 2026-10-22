@@ -16,3 +16,7 @@ boards/pics/*.html
 sharttv-release.jks
 keystore.properties
 .ks_storepass
+
+# windy api keys
+app/windy.properties
+windy.properties

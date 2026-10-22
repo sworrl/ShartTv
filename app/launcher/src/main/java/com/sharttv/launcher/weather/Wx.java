@@ -17,6 +17,7 @@ public class Wx {
     public long fetchedAt;
     public double lat, lon;
     public String place = "";
+    public String model = "Open-Meteo";
 
     // Derived
     public String category = "unknown";   // clear, clear_night, cloudy, overcast, fog, drizzle,

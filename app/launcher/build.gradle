@@ -2,12 +2,20 @@ plugins { id 'com.android.application' }
 android {
   namespace 'com.sharttv.launcher'
   compileSdk 34
+  def windyFile = rootProject.file("windy.properties")
+  def windy = new Properties()
+  if (windyFile.exists()) windy.load(new FileInputStream(windyFile))
+  def wkey = { k -> "\"" + (windy[k] ?: "") + "\"" }
+  buildFeatures { buildConfig true }
   defaultConfig {
     applicationId "com.sharttv.launcher"
     minSdk 29
     targetSdk 34
     versionCode 1
     versionName "0.1"
+    buildConfigField "String", "WINDY_POINT_KEY", wkey("WINDY_POINT_KEY")
+    buildConfigField "String", "WINDY_WEBCAMS_KEY", wkey("WINDY_WEBCAMS_KEY")
+    buildConfigField "String", "WINDY_MAP_KEY", wkey("WINDY_MAP_KEY")
   }
   def ksPropsFile = rootProject.file("keystore.properties")
   def ksProps = new Properties()
