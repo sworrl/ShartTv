@@ -1,0 +1,1 @@
+Board/SoC identification doc moved to docs/hardware/01-board-soc-id.md. Pics stay here (gitignored).

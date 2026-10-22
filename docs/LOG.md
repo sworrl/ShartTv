@@ -22,3 +22,6 @@ replacement, not an attack on anyone else's system.
 
 ## Rights notices
 - None obeyed/hidden. If a pulled APK carries a license or anti-RE notice, quote to owner here.
+
+## docs/hardware/ note
+- `docs/hardware/*` is hardware/bootloader/privacy RESEARCH (board facts, unlock tracking, consumer-SoC options, residual privacy). It is not launcher-implementation material; the launcher impl side can ignore it. No decompiled app internals are in it.
