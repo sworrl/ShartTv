@@ -100,7 +100,7 @@ public class WeatherEngine {
                         if (listener != null) post(() -> listener.onWeather(fw, fl));
                     }
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) { android.util.Log.w("ShartWx", "refresh failed", e); }
             // sleep in small slices so stop() is responsive
             long end = System.currentTimeMillis() + REFRESH_MS;
             while (running && gen == my && System.currentTimeMillis() < end) {
@@ -246,16 +246,21 @@ public class WeatherEngine {
     }
 
     /** "Springfield, IL  ·  ECMWF  ·  Updated 7:52 PM" — the hero's place line, with how fresh it is. */
-    public static String placeLine(Context c, Wx w, Loc l) {
+    public static String placeLine(Context c, Wx w, Loc l) { return placeLine(c, w, l, false); }
+
+    /** {@code twoLines}: the place on its own line, then "Model · Updated 08:30" (for narrow cards). */
+    public static String placeLine(Context c, Wx w, Loc l, boolean twoLines) {
+        String sep = twoLines ? " · " : "   ·   ";
         String place = "";
         if (l != null) place = l.place != null && !l.place.isEmpty() ? l.place
                 : String.format(java.util.Locale.US, "%.2f, %.2f", l.lat, l.lon);
         if (l != null && "seed".equals(l.source)) place += " (default)";
         StringBuilder b = new StringBuilder(place);
-        if (w != null && w.model != null) b.append("   ·   ").append(w.model);
+        String gap = twoLines && b.length() > 0 ? "\n" : sep;
+        if (w != null && w.model != null) { b.append(gap).append(w.model); gap = sep; }
         if (w != null && w.fetchedAt > 0) {
             long age = System.currentTimeMillis() - w.fetchedAt;
-            b.append("   ·   Updated ").append(android.text.format.DateFormat.getTimeFormat(c).format(new java.util.Date(w.fetchedAt)));
+            b.append(gap).append("Updated ").append(android.text.format.DateFormat.getTimeFormat(c).format(new java.util.Date(w.fetchedAt)));
             if (age > 30 * 60_000L) b.append(" (old)");
         }
         return b.toString();
@@ -496,12 +501,67 @@ public class WeatherEngine {
           .putInt("l_dawn", l.civilDawnSec).putInt("l_dusk", l.civilDuskSec)
           .putInt("l_noon", l.solarNoonSec)
           .putString("w_hourly", hourlyJson(w))
+          .putString("w_full", snapshot(w))
           .apply();
+    }
+
+    /** Every public field of {@code w} as JSON, so a cached read restores the whole card (humidity,
+     *  UV, AQI, the 6-day forecast...) instead of just the basics. Wx's fields are kept by R8. */
+    private static String snapshot(Wx w) {
+        org.json.JSONObject o = new org.json.JSONObject();
+        for (java.lang.reflect.Field f : Wx.class.getFields()) {
+            if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
+            try {
+                Object v = f.get(w);
+                if (v == null) continue;
+                if (v.getClass().isArray()) {
+                    org.json.JSONArray a = new org.json.JSONArray();
+                    for (int i = 0; i < java.lang.reflect.Array.getLength(v); i++) {
+                        Object e = java.lang.reflect.Array.get(v, i);
+                        a.put(e instanceof Double && ((Double) e).isNaN() ? org.json.JSONObject.NULL : e);
+                    }
+                    o.put(f.getName(), a);
+                } else if (!(v instanceof Double && ((Double) v).isNaN())) o.put(f.getName(), v);
+            } catch (Exception ignored) {}
+        }
+        return o.toString();
+    }
+
+    private static void restore(Wx w, String json) throws org.json.JSONException {
+        org.json.JSONObject o = new org.json.JSONObject(json);
+        for (java.lang.reflect.Field f : Wx.class.getFields()) {
+            if (java.lang.reflect.Modifier.isStatic(f.getModifiers()) || !o.has(f.getName())) continue;
+            try {
+                Class<?> t = f.getType();
+                String k = f.getName();
+                if (t == double.class) f.setDouble(w, o.getDouble(k));
+                else if (t == int.class) f.setInt(w, o.getInt(k));
+                else if (t == long.class) f.setLong(w, o.getLong(k));
+                else if (t == boolean.class) f.setBoolean(w, o.getBoolean(k));
+                else if (t == String.class) f.set(w, o.getString(k));
+                else if (t.isArray()) {
+                    org.json.JSONArray a = o.getJSONArray(k);
+                    Class<?> c = t.getComponentType();
+                    Object arr = java.lang.reflect.Array.newInstance(c, a.length());
+                    for (int i = 0; i < a.length(); i++) {
+                        if (c == double.class) java.lang.reflect.Array.setDouble(arr, i, a.optDouble(i, Double.NaN));
+                        else if (c == int.class) java.lang.reflect.Array.setInt(arr, i, a.getInt(i));
+                        else if (c == long.class) java.lang.reflect.Array.setLong(arr, i, a.getLong(i));
+                        else if (c == String.class) java.lang.reflect.Array.set(arr, i, a.getString(i));
+                    }
+                    f.set(w, arr);
+                }
+            } catch (Exception ignored) {}
+        }
     }
 
     public Wx readCachedWx() {
         if (!sp.contains("w_code")) return null;
         Wx w = new Wx();
+        String full = sp.getString("w_full", null);
+        if (full != null) {
+            try { restore(w, full); w.classify(); return w; } catch (Exception ignored) { w = new Wx(); }
+        }
         w.code = sp.getInt("w_code", -1); w.isDay = sp.getInt("w_day", 1) == 1;
         w.tempC = sp.getFloat("w_temp", 0); w.precipMm = sp.getFloat("w_precip", 0);
         w.windKmh = sp.getFloat("w_wind", 0); w.cloudPct = sp.getInt("w_cloud", 0);

@@ -54,14 +54,16 @@ public class HourlyChart extends View {
         if (bot - top < 8 * d) { top = valH + 2 * d; iconH = 0; }
         float step = (w - 2 * padX) / (n - 1);
 
+        double[] temps = java.util.Arrays.copyOf(wx.hrTempC, n);
+        if (!Double.isNaN(wx.tempC) && wx.fetchedAt > 0) temps[0] = wx.tempC;   // "Now" is the current reading
         double lo = Double.MAX_VALUE, hi = -Double.MAX_VALUE;
-        for (int i = 0; i < n; i++) { double t = wx.hrTempC[i]; if (!Double.isNaN(t)) { lo = Math.min(lo, t); hi = Math.max(hi, t); } }
+        for (int i = 0; i < n; i++) { double t = temps[i]; if (!Double.isNaN(t)) { lo = Math.min(lo, t); hi = Math.max(hi, t); } }
         if (hi - lo < 2) { hi += 1; lo -= 1; }
 
         float[] xs = new float[n], ys = new float[n];
         for (int i = 0; i < n; i++) {
             xs[i] = padX + i * step;
-            double t = Double.isNaN(wx.hrTempC[i]) ? lo : wx.hrTempC[i];
+            double t = Double.isNaN(temps[i]) ? lo : temps[i];
             ys[i] = (float) (bot - (t - lo) / (hi - lo) * (bot - top));
         }
 
@@ -101,7 +103,7 @@ public class HourlyChart extends View {
         int every = Math.max(1, (int) Math.ceil(30 * d / step));
         java.util.Calendar cal = java.util.Calendar.getInstance();
         for (int i = 0; i < n; i++) {
-            int tf = f(wx.hrTempC[i]);
+            int tf = f(temps[i]);
             p.setColor(Semantic.temp(tf));
             cv.drawCircle(xs[i], ys[i], 2.6f * d, p);
             if (i % every != 0 && i != n - 1) continue;

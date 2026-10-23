@@ -470,7 +470,7 @@ public class LauncherActivity extends Activity {
         glanceCond.setTypeface(Fonts.display);
         glanceCond.setTextColor(theme.accentColor);
         glanceCond.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
-        glanceCond.setSingleLine(true); glanceCond.setEllipsize(TextUtils.TruncateAt.END);
+        glanceCond.setMaxLines(1); glanceCond.setEllipsize(TextUtils.TruncateAt.END);
         glanceCond.setAutoSizeTextTypeUniformWithConfiguration(11, 17, 1, TypedValue.COMPLEX_UNIT_SP);
         glanceHilo = new TextView(this);
         glanceHilo.setTypeface(Fonts.body);
@@ -480,8 +480,10 @@ public class LauncherActivity extends Activity {
         glancePlace.setTypeface(Fonts.body);
         glancePlace.setTextColor(theme.textDimColor);
         glancePlace.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        glancePlace.setMaxLines(2); glancePlace.setEllipsize(TextUtils.TruncateAt.END);   // keeps "Updated" visible
-        mid.addView(glanceCond); mid.addView(glanceHilo); mid.addView(glancePlace);
+        glancePlace.setMaxLines(2); glancePlace.setEllipsize(TextUtils.TruncateAt.END);   // place, then model · updated
+        // autosize only shrinks text in a fixed height, so the condition gets one ("Torrential Downpour" fits)
+        mid.addView(glanceCond, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(24)));
+        mid.addView(glanceHilo); mid.addView(glancePlace);
         top.addView(mid, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         // the next 8 hours fill the card's right side (the whole card opens the full Weather screen)
         glanceHourly = new com.sharttv.launcher.weather.HourlyChart(this);
@@ -574,7 +576,7 @@ public class LauncherActivity extends Activity {
         if (!Double.isNaN(curWx.tempMaxC) && !Double.isNaN(curWx.tempMinC))
             glanceHilo.setText("H " + f(curWx.tempMaxC) + "°   L " + f(curWx.tempMinC) + "°");
         else glanceHilo.setText("");
-        glancePlace.setText(WeatherEngine.placeLine(this, curWx, curLoc));
+        glancePlace.setText(WeatherEngine.placeLine(this, curWx, curLoc, true));
 
         mm("FEELS", f(curWx.feelsC) + "°", Semantic.temp(f(curWx.feelsC)));
         int wmph = (int) Math.round(curWx.windKmh * 0.621);
@@ -603,7 +605,7 @@ public class LauncherActivity extends Activity {
                     c.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
                     c.setAutoSizeTextTypeUniformWithConfiguration(8, 12, 1, TypedValue.COMPLEX_UNIT_SP);
                     c.setGravity(Gravity.CENTER);
-                    c.setSingleLine(true);
+                    c.setMaxLines(1);
                     android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder();
                     sb.append(curWx.fcDay[i].toUpperCase(Locale.getDefault())).append(" ")
                       .append(Wx.glyph(curWx.fcCode[i])).append(" ");

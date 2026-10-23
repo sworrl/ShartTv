@@ -2,5 +2,8 @@
 -renamesourcefileattribute SourceFile
 -keepattributes SourceFile,LineNumberTable
 # Activities are kept via the merged manifest. org.json ships in android.jar (not shrunk).
-# Nothing in this app is accessed by name from outside, so no extra -keep is required.
+# Nothing is accessed by name from outside; the one by-name use inside is kept below.
 -dontwarn org.jetbrains.annotations.**
+
+# The weather cache snapshots Wx's public fields by name (WeatherEngine.snapshot/restore).
+-keepclassmembers class com.sharttv.launcher.weather.Wx { public <fields>; }

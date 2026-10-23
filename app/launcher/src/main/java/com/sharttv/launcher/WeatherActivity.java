@@ -225,7 +225,7 @@ public class WeatherActivity extends Activity {
                 TextView val = new TextView(this);
                 val.setTypeface(Fonts.display, Typeface.BOLD);
                 val.setTextColor(theme.textColor);
-                val.setSingleLine(true);
+                val.setMaxLines(1);   // not setSingleLine: that defeats autosize
                 val.setIncludeFontPadding(false);
                 // long values ("100/100/100", "1013 hPa") shrink to fit the column instead of clipping
                 val.setAutoSizeTextTypeUniformWithConfiguration(10, 18, 1, TypedValue.COMPLEX_UNIT_SP);

@@ -135,6 +135,7 @@ public class WeatherView extends View {
     /** Tag for glass cards the sun/moon should pass behind: {@code view.setTag(WeatherView.OCCLUDE)}. */
     public static final String OCCLUDE = "wx-occlude";
     private final int[] myLoc = new int[2], vLoc = new int[2];
+    private final android.graphics.Path occ = new android.graphics.Path();
 
     private void clipOutOccluders(Canvas cv) {
         getLocationOnScreen(myLoc);
@@ -146,7 +147,12 @@ public class WeatherView extends View {
         if (OCCLUDE.equals(v.getTag())) {
             v.getLocationOnScreen(vLoc);
             float x = vLoc[0] - myLoc[0], y = vLoc[1] - myLoc[1];
-            cv.clipOutRect(x, y, x + v.getWidth() * v.getScaleX(), y + v.getHeight() * v.getScaleY());
+            float vw = v.getWidth() * v.getScaleX(), vh = v.getHeight() * v.getScaleY();
+            // rounded like the glass cards and pills, so the sun never shows a square notch
+            float r = Math.min(vh / 2f, 20 * getResources().getDisplayMetrics().density * v.getScaleY());
+            occ.reset();
+            occ.addRoundRect(x, y, x + vw, y + vh, r, r, android.graphics.Path.Direction.CW);
+            cv.clipOutPath(occ);
             return;
         }
         if (v instanceof ViewGroup) {

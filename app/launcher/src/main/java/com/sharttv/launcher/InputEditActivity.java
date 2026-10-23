@@ -39,6 +39,7 @@ public class InputEditActivity extends Activity {
     private String preset;
     private EditText name;
     private LinearLayout grid;
+    private android.widget.ScrollView sv;
     private WeatherView sky;
     private final android.os.Handler h = new android.os.Handler();
     private Wx wx;
@@ -76,7 +77,7 @@ public class InputEditActivity extends Activity {
 
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
-        col.setPadding(dp(48), dp(26), dp(48), dp(20));
+        col.setPadding(dp(48), dp(26), dp(48), 0);
         root.addView(col, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         TextView title = new TextView(this);
@@ -111,42 +112,39 @@ public class InputEditActivity extends Activity {
         nb.setStroke(dp(1.5f), Glass.withAlpha(t.accentColor, 0x90));
         name.setBackground(nb);
         name.setOnFocusChangeListener((v, has) -> nb.setStroke(dp(has ? 2.5f : 1.5f), has ? t.accentColor : Glass.withAlpha(t.accentColor, 0x90)));
+        name.setTag(WeatherView.OCCLUDE);   // the sun passes behind the field, not over it
+        // name, Save and Reset share one row so the grid below gets the whole rest of the screen
+        LinearLayout top = new LinearLayout(this);
+        top.setOrientation(LinearLayout.HORIZONTAL);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        top.setClipChildren(false);
         LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(dp(420), ViewGroup.LayoutParams.WRAP_CONTENT);
-        col.addView(name, nlp);
-
-        TextView artLab = new TextView(this);
-        artLab.setTypeface(Fonts.body, Typeface.BOLD);
-        artLab.setText("Card");
-        artLab.setTextColor(t.textDimColor);
-        artLab.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        artLab.setPadding(0, dp(14), 0, dp(4));
-        col.addView(artLab);
+        nlp.setMarginEnd(dp(18));
+        top.addView(name, nlp);
+        top.addView(pill("Save", true, v -> save()));
+        top.addView(pill("Reset to " + (port == null ? "default" : port), false, v -> {
+            InputNames.reset(this, id);
+            finish();
+        }));
+        col.addView(top, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         grid = new LinearLayout(this);
         grid.setOrientation(LinearLayout.VERTICAL);
         grid.setClipChildren(false);
         grid.setPadding(dp(8), 0, 0, 0);   // room for the focused card's lift
-        col.setClipChildren(false);
+        grid.setClipToPadding(false);
         // 50 presets in groups: the one place that scrolls (it follows focus)
-        android.widget.ScrollView sv = new android.widget.ScrollView(this);
+        sv = new android.widget.ScrollView(this);
         sv.setVerticalScrollBarEnabled(false);
-        sv.setClipChildren(false);
+        // the column clips it at its edges (so scrolled cards never draw over the name field);
+        // its padding and the column's side padding leave the focused card room to lift
         sv.setClipToPadding(false);
-        sv.setPadding(0, dp(4), 0, dp(10));
+        sv.setPadding(0, dp(8), 0, dp(16));
         sv.setVerticalFadingEdgeEnabled(true);
         sv.setFadingEdgeLength(dp(28));
         sv.addView(grid);
         col.addView(sv, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         buildGrid();
-
-        LinearLayout btns = new LinearLayout(this);
-        btns.setOrientation(LinearLayout.HORIZONTAL);
-        btns.addView(pill("Save", true, v -> save()));
-        btns.addView(pill("Reset to " + (port == null ? "default" : port), false, v -> {
-            InputNames.reset(this, id);
-            finish();
-        }));
-        col.addView(btns);
 
         setContentView(root);
         View first = grid.findViewWithTag("art:" + preset);
@@ -227,6 +225,7 @@ public class InputEditActivity extends Activity {
         c.setOnFocusChangeListener((v, has) -> {
             c.setRing(has || on, has ? t.accentColor : Glass.withAlpha(t.accentColor, 0xA0));
             CardFx.focus(v, has, 1.08f, rad, t.accentColor, t.focusAnimMs);
+            if (has && key.isEmpty()) sv.smoothScrollTo(0, 0);   // back at the top: show its heading
         });
         c.setOnClickListener(v -> CardFx.click(v, rad, t.accentColor, () -> {
             String cur = name.getText().toString().trim();
@@ -250,6 +249,7 @@ public class InputEditActivity extends Activity {
         p.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
         p.setPadding(dp(20), dp(8), dp(20), dp(8));
         p.setFocusable(true);
+        p.setTag(WeatherView.OCCLUDE);
         final float rad = dp(18);
         GradientDrawable g = new GradientDrawable();
         g.setCornerRadius(rad);
@@ -264,7 +264,6 @@ public class InputEditActivity extends Activity {
         p.setOnClickListener(v -> CardFx.click(v, rad, t.accentColor, () -> onClick.onClick(v)));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.setMarginEnd(dp(12));
-        lp.topMargin = dp(6);
         p.setLayoutParams(lp);
         return p;
     }
