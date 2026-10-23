@@ -2,7 +2,7 @@
 
 Target: Sony BRAVIA 4K VH21, Google TV, Android 12. Replaces the HOME role holder
 `com.google.android.apps.tv.launcherx` (Google TV launcher, "launcherx" below) with Shart TV,
-a user-installed (non-system) app. Stage 1: sections 0-3 and the open questions.
+a user-installed (non-system) app. Stage 1: sections 0-12. Stage 2 (2026-10-22): sections 4.4 and 13.
 
 ---
 
@@ -160,7 +160,7 @@ TV that resolves to Sony's TV player [O]. No privileged permission is needed for
 | sonyselect | `/system/priv-app/` | disabled for user 0 (owner) |
 
 The owner's earlier debloat (promos, Sony Select and others) has a rollback script in
-`../scripts/rollback-debloat.sh`.
+`../scripts/sharttv.py rollback`.
 
 ### 2.4 TV inputs [O]
 
@@ -454,6 +454,152 @@ input/source switcher first, fast and quiet. Design, not a copy of launcherx's l
   question (section 12). Shart TV shows all inputs regardless and does not gray out on that signal
   until verified.
 
+### 4.4 Layout measurements (stock launcher, for sizing reference)
+
+Added 2026-10-22 (stage 2). These are the stock launcher's effective sizes on this TV, so Shart
+TV can feel familiar on the same panel. They are a reference, not a target: section 4.1-4.3
+decide what Shart TV shows, and any value below may be changed for legibility. Where a range
+is given, anything inside it is fine.
+
+**Reference frame [O].** Panel 1920x1080 px at density 320 (xhdpi), so 1 dp = 2 px and the
+screen is **960 x 540 dp**. Font scale is the default (1.0), so 1 sp = 1 dp. The system runs in
+night (dark) UI mode. No display cutout or rounded screen corners. Values below come from the
+stock launcher's resources resolved for this configuration (television, landscape, large,
+height >= 480 dp, night) [I] unless tagged otherwise. The stock launcher reserves no overscan
+margin beyond the side margins below.
+
+#### Home screen frame
+
+| Measurement | Stock value | Acceptable for Shart TV | Tag |
+|---|---|---|---|
+| Left/right content margin (row start and end inset, top bar inset) | 58 dp | 48-64 dp | [I] |
+| Content width between margins | 844 dp (960 - 2 x 58) | follows from margin | [I] |
+| Top bar: space above the tab/nav row | 27 dp | 20-32 dp | [I] |
+| Top bar: nav row height | 44 dp | 40-56 dp | [I] |
+| Top bar: space below nav row before content | 48 dp | 24-48 dp | [I] |
+| Total top bar band (27 + 44 + 48) | about 119 dp | 90-130 dp | [I] |
+| Vertical padding above and below each row's card strip | 8 dp each | 6-12 dp | [I] |
+| Row header strip height | 39 dp | 32-44 dp | [I] |
+| Gap between row header and its cards | 4.5 dp | 4-8 dp | [I] |
+| Featured/hero area at the top of the home tab (promo carousel) | about 365 dp tall, 16 dp above, 8 dp below | **Not copied** (section 9) | [I] |
+| Screen background | near-black, very slightly cool (about 5-6% grey) | any near-black | [I] |
+
+**Rows visible at once [I], derived.** An app row is about 39 + 4.5 + 8 + 110.5 + 8 = 170 dp
+tall. Below the 119 dp top band that leaves about 420 dp, so **two full card rows plus the top
+of a third** fit on screen. On the stock home tab the hero area takes most of the first screen,
+so only one row is fully visible until the user scrolls. Shart TV has no hero area, so the
+inputs row and apps row are both fully visible on the first screen at these sizes.
+
+**Cards visible per row [I], derived.** With the 196 x 110.5 dp app card and 20 dp gap, about
+4 full cards plus part of a fifth fit in a row; with the compact 124 x 70 dp size, about 6.
+
+#### Cards
+
+| Measurement | Stock value | Acceptable for Shart TV | Tag |
+|---|---|---|---|
+| App card (banner) aspect | 16:9 | 16:9 (Android TV app banners are 16:9 [D]) | [I] |
+| App card size, standard | 196 x 110.5 dp | 180-210 dp wide | [I] |
+| App card size, compact variant | 124 x 70 dp | 110-140 dp wide | [I] |
+| Other card heights the stock launcher uses (content rows) | 86, 110.5, 151, 232 dp | for the inputs row, 86-151 dp | [I] |
+| Content card aspects in use | 16:9 (most), 1:1, 2:3 (posters), about 2.45:1 (wide promos) | 16:9 for inputs and apps | [I] |
+| Gap between cards in a row | 20 dp | 12-24 dp | [I] |
+| Focused card scale | 1.10 | 1.05-1.12 | [I] |
+| Pressed-while-focused scale (some card types) | 1.05 | 1.0-1.05 | [I] |
+| Larger cards use smaller focus scales | 1.075, 1.05, 1.025 steps | scale down as cards grow | [I] |
+| Focus animation duration (scale + elevation) | 150 ms | 120-250 ms | [I] |
+| Focus animation curve | platform default ease-in-out for app/content cards; design-system cards use a fast-out, slow-settle curve, 250-300 ms in, 350-500 ms out | any ease-out style curve | [I] |
+| Focus elevation (shadow) | 0 dp unfocused, 4 dp focused (6 dp on some design-system cards) | 2-8 dp | [I] |
+| Focus outline / ring on cards | none found; focus is shown by scale + shadow | Shart TV may add a 2-3 dp light outline for clarity | [I] |
+| Card text fade/slide when focus changes | 150 ms | 100-200 ms | [I] |
+| Gap between card image and its text block | 9 dp | 6-12 dp | [I] |
+| Card corner radius | **evidence gap** (see below) | 8-16 dp | - |
+| Label visibility | per-row setting with three modes: always, only when the card is focused, only when the row is focused | Shart TV: app name under the focused card only; input names always | [I] |
+
+#### Row headers
+
+| Measurement | Stock value | Acceptable for Shart TV | Tag |
+|---|---|---|---|
+| Header strip height | 39 dp, text vertically centred, starts at the 58 dp margin | 32-44 dp | [I] |
+| Header text nominal size | 32 dp (the strip's text style) | Shart TV: 18-24 sp | [I] |
+| Optional header icon | 32 dp tall, 10-16 dp before the text | optional | [I] |
+| Optional subtitle line under header | 16 sp, 22 dp line, 12 dp below | not needed | [I] |
+| Unfocused rows | header text fades with the row's selection level (full opacity on the focused row, dimmed on others) | do the same | [I] |
+
+#### Inputs and sources (stock)
+
+- **How inputs are reached [I][F].** There is no inputs row on the stock home screen. Inputs
+  are reached through (a) the TV's input button, which Sony's TV player handles (remote-spec),
+  (b) an optional input shortcut the user can pin in the top bar's shortcuts area, and
+  (c) a recently-watched-input entry and the last-used-input logic in the background process, which
+  can return to the last input at power-on. This is the behavior Shart TV fixes (4.1).
+- **Input tiles [I].** The stock launcher has a dedicated card type for TV inputs, rendered as a
+  square (1:1) card with the input name in a single line inside the card, 15 dp in from the
+  edge, near-white text. The card's height comes from the row it sits in (one of the card
+  heights above); the exact height used for inputs is an evidence gap.
+- Shart TV inputs row (design, not copied): 16:9 tiles at 160-196 dp wide, input name always
+  shown, last-used input first (4.3).
+
+#### Top bar
+
+| Item | Stock value | Acceptable for Shart TV | Tag |
+|---|---|---|---|
+| Nav row | horizontally scrolling tab row, 44 dp tall, 50 dp fading edge at the ends | Shart TV may use a plain row | [I] |
+| Tab chip | 40 dp tall, 14 dp horizontal and 4 dp vertical padding, 16 sp text | 36-44 dp tall | [I] |
+| Tab focus | no scale; the chip fills with a light colour, its text turns near-black, 4 dp elevation, 300 ms ease-out | a filled light pill on focus is a good pattern | [I] |
+| Tab text unfocused | near-white at about 70% opacity | 60-80% | [I] |
+| Round icon buttons in the nav row (search, profile) | 32 dp, 12 dp apart, about 60% opacity when unfocused | 32-40 dp | [I] |
+| Shortcuts area (pinned shortcuts such as an input) | pill-shaped group with 6 dp inner padding | optional | [I] |
+| Clock | **evidence gap** (built in code, size not in resources) | 16-20 sp, top right, at the 58 dp margin | - |
+| Settings / notifications | opens a side panel (below), not a top-bar menu | Shart TV: Settings tile/button | [I][F] |
+
+**Side panel (settings + notifications) [I].** A floating window on the right edge, **272 dp
+wide**, full height minus 16 dp at top and bottom, vertically centred, with a 24 dp margin from
+the right edge; it animates in from off-screen right. Its list uses 12 dp spacing between items. This panel belongs to the
+notification-handler role (section 6); Shart TV doesn't rebuild it.
+
+#### Typography
+
+The stock launcher uses the public Material 3 type scale [I][D]
+(`https://m3.material.io/styles/typography/type-scale-tokens`), in two proprietary Google
+sans faces. Shart TV must use an open font instead (for example Roboto, which ships with
+Android, or Inter/Noto Sans under the OFL).
+
+| Role | Size | Letter spacing (em) | Used for (stock) | Tag |
+|---|---|---|---|---|
+| Display L / M / S | 57 / 45 / 36 sp | 0 | large hero titles | [I] |
+| Headline L / M / S | 32 / 28 / 24 sp | 0 | page and hero titles (28 sp most common) | [I] |
+| Title L / M / S | 22 / 16 / 14 sp | 0 | section titles, card titles | [I] |
+| Body L / M / S | 16 / 14 / 12 sp | 0 / 0 / 0.008 | descriptions, metadata | [I] |
+| Label L / M / S | 14 / 12 / 11 sp | 0 / 0.008 / 0.009 | buttons, chips, badges | [I] |
+| Tab text | 16 sp | 0.006 | top nav tabs | [I] |
+| Smallest caption | 10 sp | 0.008 (0.09 for all-caps tags) | badges, panel captions | [I] |
+
+Shart TV guidance: never go below 12 sp for anything the user must read at TV distance; use
+Title M (16 sp) for card labels and 20-24 sp for row headers.
+
+#### Colors (general description only) [I]
+
+- Background: near-black with a faint cool tint, opaque.
+- Primary text: near-white, slightly warm-grey, about 90% luminance, fully opaque.
+- Secondary text: mid grey, about 50% luminance.
+- De-emphasis by opacity: dimmed icons at about 60% opacity; some captions at 40%.
+- Focused elements are not recoloured much; they get larger and cast a shadow.
+- Shart TV picks its own palette. No brand colours, logos or artwork are to be copied.
+
+#### Evidence gaps (not determinable statically; check on screen with the owner)
+
+1. **Card corner radius.** Applied in code at image-load time, value not found in resources.
+   Shape radii present in the app cluster at 12, 16 and 20 dp. Use 8-16 dp.
+2. **Row header rendered size.** The strip's text style is 32 dp, but the header view supports
+   a runtime scale and opacity animation; the on-screen size may be smaller. Measure from a
+   screenshot only if the owner takes one.
+3. **Clock size and position**, and the profile avatar size: built in code.
+4. **Input tile height** in the stock input surfaces.
+5. **Whether the stock apps row uses the standard (110.5 dp) or compact (70 dp) card** on this
+   TV: both exist and the choice is server-driven per row.
+6. A live view-hierarchy dump of the stock home screen was not possible during this session (the
+   TV was in use and the home activity was not on screen); no screen state was changed to get one.
+
 ## 5. Becoming and staying HOME
 
 Covered mechanically in section 3.4-3.5. Behavior Shart TV must get right:
@@ -552,3 +698,74 @@ Owner runs any state-changing step. Baseline the stock launcher first where poss
    broadcast limits apply to implicit sends; Sony also sends it explicitly per receiver)?
 9. Which key does the remote's input button send, and which app handles it? Shart TV doesn't
    replace that, but the input row should behave the same.
+
+---
+
+## 13. Capability inventory: what launcherx does
+
+Added 2026-10-22 (stage 2). Every user-visible or system-facing capability found in the stock
+launcher, with a verdict for Shart TV. Sources: launcherx's manifest and code [F][I], resolver
+queries on the TV [O], public docs [D]. Interop names (actions, authorities, permissions) are
+given only where something else depends on them.
+
+Verdicts:
+- **SHOULD**: worth replicating; the public API to use is named.
+- **CAN'T**: needs a signature/privileged permission or a system role a user app can't hold
+  (named). launcherx stays installed and keeps doing it (section 10).
+- **WON'T**: ads, tracking, telemetry, Google-account content, or not wanted.
+
+### 13.1 Prioritized SHOULD list (implementation order)
+
+| # | Capability | Public API / interface | Spec ref |
+|---|---|---|---|
+| 1 | Be the HOME screen and know when it isn't | `MAIN`+`HOME`+`DEFAULT` activity; `RoleManager.isRoleHeld(ROLE_HOME)`; offer `android.settings.HOME_SETTINGS` (resolves to the permission controller's home picker on this TV [O]) | 3.1, 3.5, 5 |
+| 2 | Inputs row, one press per input, last-used first | `TvInputManager.getTvInputList()`; start `ACTION_VIEW` on `TvContract.buildChannelUriForPassthroughInput(id)`; listen for `com.sony.dtv.tvplayer.intent.action.INPUT_CHANGED` | 4.3, 3.6 |
+| 3 | Apps row: every TV app, with its banner, launches on click | `PackageManager.queryIntentActivities` for `MAIN` + `CATEGORY_LEANBACK_LAUNCHER`; banner via `ActivityInfo.loadBanner` (fall back to `loadIcon`); launch with `getLeanbackLaunchIntentForPackage` [D] | 3.2, 4.1 |
+| 4 | Keep the apps row current on install/uninstall/update | `LauncherApps.Callback` [D], or a receiver registered at runtime for `PACKAGE_ADDED` / `PACKAGE_REMOVED` / `PACKAGE_CHANGED` (data scheme `package`). launcherx uses a manifest receiver for added/fully-removed [F]; runtime registration is enough for a HOME that is always running | - |
+| 5 | Settings shortcuts | Public `android.settings.*` actions. Resolve on this TV [O]: `SETTINGS`, `WIFI_SETTINGS`, `SOUND_SETTINGS`, `DISPLAY_SETTINGS` (goes to Sony's picture settings), `DATE_SETTINGS`, `APPLICATION_SETTINGS`, `ACCESSIBILITY_SETTINGS`, `DREAM_SETTINGS` (screensaver). **Do not resolve:** `BLUETOOTH_SETTINGS`, `NOTIFICATION_LISTENER_SETTINGS`; check `resolveActivity` before showing a tile | 7 |
+| 6 | Live TV and Guide entries | Customizer's `basic-mode-live-tv-app-uri` / `basic-mode-epg-app-uri` from `content://tvlauncher.config/configuration`; start with `Intent.parseUri` | 3.7 |
+| 7 | User app order and hidden apps | Local storage only (SharedPreferences/DataStore); optional seed from the customizer's per-country app order. launcherx's order and its apps-only mode setting are its own and not readable [I] | 3.7, 4.1 |
+| 8 | Answer the "all apps" request | Handle `android.intent.action.ALL_APPS` + `DEFAULT` with an activity that opens Shart TV's apps view. Today only launcherx answers it [O]; with two handlers the system shows a chooser unless the owner picks Shart TV | - |
+| 9 | Clock and network status in the top bar | `TextClock` (or `ACTION_TIME_TICK` while visible); `ConnectivityManager.registerDefaultNetworkCallback` with `ACCESS_NETWORK_STATE` | 4.4 |
+| 10 | Focus, sizing and motion that read well at 3 m | Values in 4.4 | 4.4 |
+| 11 | (later, optional) Notification count badge | A `NotificationListenerService` the owner enables over adb (`cmd notification allow_listener`); the Settings screen for it does not resolve on this TV [O] | 3.3, 6 |
+| 12 | (later, optional) "Now playing" chip with play/pause | `MediaSessionManager.getActiveSessions(listenerComponent)`, allowed without `MEDIA_CONTENT_CONTROL` once the item-11 listener is enabled [D] | - |
+| 13 | (later, optional, off by default) Search button | Start `Intent.ACTION_ASSIST` (resolves to Google's TV search app on this TV [O]). Off by default because the owner keeps voice/assistant disabled (remote-spec) | - |
+| 14 | (later, optional) Return to last input at power-on | Runtime `SCREEN_ON` receiver + passthrough intent from item 2. Unverified whether a HOME app may start that activity from the background on Android 12, and it overlaps launcherx's own logic and Sony's app-on-boot setting (section 12, Q4). Build only if Q4 says launcherx stops doing it | 12 |
+
+### 13.2 Full inventory
+
+| Capability (stock) | What it does | Verdict for Shart TV |
+|---|---|---|
+| Home activity | The `HOME` activity at priority 2 (a second, simplified home activity ships disabled) [F] | **SHOULD**, item 1. Shart TV is capped at priority 0 and must be set explicitly (3.4). |
+| App rows (installed apps) | Lists launchable TV apps as 16:9 banner cards; server-driven row layout [I] | **SHOULD**, items 3-4, 7. |
+| App install/remove refresh | Manifest receiver for package added / fully removed [F] | **SHOULD**, item 4. |
+| "All apps" deep link | Answers `android.intent.action.ALL_APPS` [F][O] | **SHOULD**, item 8. |
+| Input switching | Input shortcut card type, a recently-watched-input entry, last-used-input store [I] | **SHOULD**, item 2 (first row instead of buried). |
+| Last-used input feed from Sony's player | Receiver for `android.apps.tv.launcherx.INPUT_SELECTED`, guarded by `com.android.providers.tv.permission.WRITE_EPG_DATA` [F] | **CAN'T** receive (sent explicitly to launcherx). Use `INPUT_CHANGED` instead (3.6). |
+| Boot to last input | Screen-on/off and dream receivers in the background process restore the last input or home location [F][I] | **SHOULD-later** (item 14), only if Q4 shows it's needed. |
+| Live TV / EPG aggregation | Live TV rows and guide built from all inputs' channels; exports its own live-TV provider [F][I] | **CAN'T**: needs `com.android.providers.tv.permission.ACCESS_ALL_EPG_DATA` (signature/privileged). Shart TV links to Sony's Live TV and Guide (item 6). |
+| Recommendation / preview channels from other apps | Rows of other apps' published channels and programs [I] | **CAN'T**: reading other apps' rows needs `ACCESS_ALL_EPG_DATA`; the TV provider limits other callers to their own package [D AOSP TvProvider]. Also **WON'T** by policy (section 9). |
+| Channel "add to home" requests | Handles `android.media.tv.action.REQUEST_CHANNEL_BROWSABLE` and the matching broadcast [F][O] | **WON'T**. launcherx keeps answering these; Shart TV has no channel rows. |
+| Continue watching / Watch Next | Reads the TV provider's watch-next table (title, episode, artwork, aspect, position, duration, last engagement) and an Engage-SDK verification receiver [I][F] | **CAN'T** across apps (same `ACCESS_ALL_EPG_DATA` limit); section 12 Q7 tracks a re-check. |
+| Content tabs (movies, shows, library), entity pages, hero/featured carousel with video previews, trailers, free-play marketplace, YouTube TV hooks, news briefing | Google-account content surfaces [I][F] | **WON'T**. |
+| Sponsored rows, ad signals provider, ad-id, "why this ad" menu (`com.google.android.tv.ads.intent.action.LAUNCH_ATC_MENU`) | Ads [F] | **WON'T** (section 9). |
+| Search / voice entry | Search tab and text-input activity; voice via Google's TV search app [F][O] | **SHOULD-later, off by default** (item 13). Shart TV has no search UI of its own. |
+| Gemini chat, AI image creation, app-function services | Assistant/AI features [F] | **WON'T**. |
+| Notifications panel / dashboard | Side panel opened by `android.app.action.TOGGLE_NOTIFICATION_HANDLER_PANEL` / `OPEN_NOTIFICATION_HANDLER_PANEL`, guarded by `android.permission.STATUS_BAR_SERVICE`; launcherx holds the TV notification-handler role [F][O] | **CAN'T** own it (`STATUS_BAR_SERVICE`, `ACCESS_NOTIFICATIONS`, role `SYSTEM_TELEVISION_NOTIFICATION_HANDLER`). Optional badge via own listener (item 11). |
+| Notification listener of its own | Feeds the panel [F] | Shart TV may run its own, owner-enabled (item 11). |
+| Push notifications to the launcher | Google push (cloud messaging) receiver and notification SDK [F] | **WON'T**. |
+| Now-playing controls | Requests/plays/pauses the current media session [F] | **CAN'T** as stock does (`MEDIA_CONTENT_CONTROL`); **SHOULD-later** via item 12. |
+| Profiles, kids profiles, profile lock, account re-auth, profile picker | Multi-user Google profiles [F][I] | **CAN'T**: `MANAGE_USERS`, `INTERACT_ACROSS_USERS`, `GET_ACCOUNTS_PRIVILEGED`. Sony's player still queries launcherx's device-mode provider (3.6). |
+| Digital wellbeing / screen time | Screen-on/off accounting [F] | **CAN'T**: system role `SYSTEM_WELLBEING`. |
+| Sleep timer | Schedules device sleep [F] | **CAN'T** put the device to sleep (signature `android.permission.DEVICE_POWER`). Link to the TV's own sleep-timer setting instead. |
+| Screensaver hand-off | Reacts to dream start/stop; screensaver control [F] | **CAN'T** start/stop dreams (`WRITE_DREAM_STATE`, `READ_DREAM_STATE`). The system starts the screensaver on its own; Shart TV offers `android.settings.DREAM_SETTINGS` (item 5) and pauses any animation when its window loses focus. |
+| Remote "global" buttons | Receives `android.intent.action.GLOBAL_BUTTON` and a config action; defines `com.google.android.permission.GLOBAL_BUTTON` (signature/privileged) for app-launch buttons [F] | **CAN'T** receive (delivered only to the component in the system's global-key config). Remap path is in remote-spec (RRO). |
+| Partner (OEM) customization | Reads Sony's `tvlauncher.config` provider; partner-config trigger action `com.google.android.apps.tv.launcherx.action.PARTNER_CONFIGURATION` [F][I] | **SHOULD** read the provider (items 6-7). The trigger stays launcherx's. |
+| OEM promo tab | Sony content tab from the customizer's `oem-tab-*` entries [F] | **WON'T** (section 9). |
+| Settings shortcuts and home-screen settings | Settings entry in the panel; home-screen settings exported to TV Settings as slices [F] | **SHOULD** for shortcuts (item 5). **WON'T** export slices. |
+| Clock / status | Clock and status icons in the top bar [I] | **SHOULD** (item 9). |
+| Network re-auth and trusted-network service | Captive-portal style re-login, network state service [F] | **WON'T**; the system handles networks. |
+| Experiments, remote config, crash/perf metrics, usage reporting, surveys, feedback, incident and bug-report receivers, app-health "doctor" | Telemetry and remote control of features [F] | **WON'T**. Shart TV ships no analytics and no remote config. |
+| Certification / server-compatibility providers and receivers | Internal Google TV state [F] | **WON'T** (not needed). |
+| Open-source license screen | Shows third-party licenses from TV Settings [F] | Shart TV shows its own license screen for its own dependencies. |

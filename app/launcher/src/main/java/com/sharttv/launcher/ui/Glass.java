@@ -23,6 +23,9 @@ import android.view.ViewOutlineProvider;
 public class Glass {
 
     public static float D = 2f; // px per dp, set in init()
+    // secondary edge color for the gradient glass border (set from Theme.accentColor2); the
+    // accent->white-glint->accent2 stroke is the HioneOS "fake glass" edge that reads as premium.
+    public static int ACCENT2 = 0xFF6FB0FF;
     public static void init(Context c) { D = c.getResources().getDisplayMetrics().density; }
 
     public static int dp(Context c, float v) {
@@ -64,13 +67,18 @@ public class Glass {
                 cv.save(); cv.clipPath(clip); cv.drawRect(sh, p); cv.restore();
                 p.setShader(null);
 
-                // 3) luminous beveled border
+                // 3) luminous beveled border — a diagonal gradient from the primary accent through a
+                //    white glint to the secondary accent (HioneOS-style glass edge)
                 p.setStyle(Paint.Style.STROKE);
                 p.setStrokeWidth(dpF(focused ? 2.6f : 1.4f));
-                int edge = focused ? accent : withAlpha(lighten(accent, 1.1f), 0x66);
-                p.setColor(edge);
+                int e1 = focused ? accent : withAlpha(accent, 0x7A);
+                int e2 = focused ? ACCENT2 : withAlpha(ACCENT2, 0x5E);
+                int glint = withAlpha(0xFFFFFF, focused ? 0x66 : 0x2E);
+                p.setShader(new LinearGradient(r.left, r.top, r.right, r.bottom,
+                        new int[]{e1, glint, e2}, new float[]{0f, 0.5f, 1f}, Shader.TileMode.CLAMP));
                 float inset = p.getStrokeWidth() / 2f;
                 cv.drawRoundRect(new RectF(r.left + inset, r.top + inset, r.right - inset, r.bottom - inset), rad, rad, p);
+                p.setShader(null);
 
                 // 4) gothic pointed-arch crown: faint apex lines meeting at the top-center
                 p.setStrokeWidth(dpF(1.2f));

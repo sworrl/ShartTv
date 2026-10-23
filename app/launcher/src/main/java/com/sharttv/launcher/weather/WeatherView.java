@@ -7,6 +7,7 @@ import android.graphics.LinearGradient;
 import android.graphics.Paint;
 import android.graphics.Shader;
 import android.view.View;
+import android.view.ViewGroup;
 import java.util.Random;
 
 /**
@@ -131,6 +132,29 @@ public class WeatherView extends View {
         for (int i = 0; i < nStars; i++) { stars[i][2] += (rnd.nextFloat() - 0.5f) * 0.1f; if (stars[i][2] < 0) stars[i][2] = 0; if (stars[i][2] > 1) stars[i][2] = 1; }
     }
 
+    /** Tag for glass cards the sun/moon should pass behind: {@code view.setTag(WeatherView.OCCLUDE)}. */
+    public static final String OCCLUDE = "wx-occlude";
+    private final int[] myLoc = new int[2], vLoc = new int[2];
+
+    private void clipOutOccluders(Canvas cv) {
+        getLocationOnScreen(myLoc);
+        clipOut(cv, getRootView());
+    }
+
+    private void clipOut(Canvas cv, View v) {
+        if (v == this || v.getVisibility() != VISIBLE) return;
+        if (OCCLUDE.equals(v.getTag())) {
+            v.getLocationOnScreen(vLoc);
+            float x = vLoc[0] - myLoc[0], y = vLoc[1] - myLoc[1];
+            cv.clipOutRect(x, y, x + v.getWidth() * v.getScaleX(), y + v.getHeight() * v.getScaleY());
+            return;
+        }
+        if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) clipOut(cv, g.getChildAt(i));
+        }
+    }
+
     @Override protected void onDraw(Canvas cv) {
         int w = getWidth(), h = getHeight();
         // 1) time-of-day sky gradient
@@ -148,8 +172,11 @@ public class WeatherView extends View {
         cv.drawRect(0, h * 0.5f, w, h * 0.72f, p);
         p.setShader(null);
 
-        // 1c) celestial body (sun by day / moon by night), arcing by time of day
+        // 1c) celestial body (sun by day / moon by night), arcing by time of day. It passes BEHIND
+        // the glass cards (clipped out of every view tagged OCCLUDE) so it never sits on text.
         if (clearish || cat.equals("overcast")) {
+            cv.save();
+            clipOutOccluders(cv);
             float frac = (System.currentTimeMillis() % 86400000L) / 86400000f;
             float cx = w * (0.15f + 0.7f * frac);
             float cy = h * (0.42f - 0.22f * (float) Math.sin(Math.PI * frac));
@@ -165,6 +192,7 @@ public class WeatherView extends View {
             if (!day) { // moon crater shadow
                 p.setColor(shade(tint, 0.9f)); cv.drawCircle(cx + rad * 0.4f, cy - rad * 0.3f, rad * 0.92f, p);
             }
+            cv.restore();
         }
 
         // 2) clouds/fog veils

@@ -3,7 +3,7 @@
 Owner: sworrl. Device: Sony BRAVIA 4K VH21, mt5895, Android 12 (Google TV), SDK 31.
 Access: wireless adb as `shell` (uid 2000). Date: 2026-10-22.
 
-Source tags (same scheme as the clean-room skill): **[O]** observed on device,
+Source tags (same scheme as the clean-room process): **[O]** observed on device,
 **[I]** inferred from a pulled binary, **[F]** from a firmware/config file, **[D]** datasheet/docs,
 **[M]** mainline/open source.
 
@@ -26,7 +26,7 @@ your symptom. `SSM` = "Samba Smart Manager".
 **Done:** both packages are `disabled-user` + `stopped` for user 0 [O]. Verified: no `ssm`/samba
 process running, and a live `/proc/net/tcp` snapshot shows only 443/80 outbound — no port 445,
 no NetBIOS 137-139. The DNS block is now belt-and-suspenders, not the only thing holding.
-Reversible with `scripts/rollback-debloat.sh`. Survives reboot; does **not** survive factory reset.
+Reversible with `scripts/sharttv.py rollback`. Survives reboot; does **not** survive factory reset.
 
 If there is *also* genuine SMB/UPnP on the wire, it comes from the DLNA stack (section 4), which
 we can disable too.
@@ -69,7 +69,7 @@ Sony's MTK BRAVIA bootloaders are signed and reject `fastboot flashing unlock`. 
 - Everything in sections 1, 4, 6 is achievable **today** at the app/settings layer over `shell`.
 - Root paths worth tracking as open questions: known mt5895/Pentonic chain-of-trust bugs, `su`
   via a service-mode/engineering APK, or a downgrade to a vulnerable build. Tracked in
-  `docs/QUESTIONS.md`. We do **not** fuzz or attack the device to find them (safety + skill rule).
+  `docs/QUESTIONS.md`. We do **not** fuzz or attack the device to find them (safety rule).
 
 If you want GrapheneOS-level sandboxing and hard kernel toggles, the realistic route is a
 **second device we can root** (an mt-unlockable Google TV dongle/box), not this sealed BRAVIA.
@@ -130,7 +130,7 @@ v0.2.1, a LEANBACK_LAUNCHER — currently the focused app). Full list in `sweep/
 
 ## 5. Already done this session (reversible)
 
-Disabled for user 0 via `pm disable-user` (rollback in `scripts/rollback-debloat.sh`):
+Disabled for user 0 via `pm disable-user` (rollback in `scripts/sharttv.py rollback`):
 `tv.samba.ssm`, `tv.samba.ssm.ui`, `com.sony.dtv.promos`, `com.sony.dtv.sonyselect`,
 `com.sonyericsson.idd.agent`, `com.sony.dtv.demosupport`, `com.google.android.feedback`. [O]
 
@@ -141,7 +141,7 @@ stack, promos, sonyselect, tvx, homenetwork, SemcDlna.
 
 ## 6. Plan
 
-**Track A — debloat + privacy (today, no root).** `scripts/apply-debloat.sh` makes the whole set
+**Track A — debloat + privacy (today, no root).** `scripts/sharttv.py` makes the whole set
 repeatable and adds the optional DLNA/sensing kills behind flags. Add a per-UID network denylist
 for anything we keep but distrust (`cmd netpolicy add restrict-background-blacklist <uid>`).
 

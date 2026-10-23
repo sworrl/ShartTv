@@ -42,7 +42,7 @@ Honest list so there are no illusions. "Mitigation" = best available without roo
    confirm what the signed OS does at boot, or prevent a Sony OTA from re-adding trackers or
    re-enabling Samba. Verified boot works *for Sony*, not for you.
    *Mitigation:* consider disabling automatic OTA (`com.sony.dtv.update` behavior / Settings), and
-   re-run `apply-debloat.sh` after any update that slips through.
+   re-run `scripts/sharttv.py` after any update that slips through.
 
 6. **Closed radio/CEC/Wi-Fi firmware blobs** — opaque, unchangeable without root (and mostly not
    even then). Standard for all consumer TVs.

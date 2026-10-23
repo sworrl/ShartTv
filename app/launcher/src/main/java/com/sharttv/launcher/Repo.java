@@ -76,10 +76,35 @@ public class Repo {
                 Intent launch = new Intent(Intent.ACTION_VIEW, uri)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 Drawable glyph = new ColorDrawable(theme.surfaceColor);
-                out.add(new Tile(Tile.Kind.INPUT, label, glyph, launch, info.getId()));
+                Tile t = new Tile(Tile.Kind.INPUT, label, glyph, launch, info.getId());
+                // "HDMI 3 (eARC/ARC)" -> title "HDMI 3", caption "eARC"
+                int paren = label.indexOf('(');
+                if (paren > 0) {
+                    t.label = label.substring(0, paren).trim();
+                    String s = label.substring(paren + 1).replace(")", "").trim();
+                    t.sub = s.toLowerCase(java.util.Locale.US).contains("earc") ? "eARC" : s;
+                }
+                t.art = inputArt(t.label);
+                out.add(t);
             }
         } catch (Exception ignored) {}
         return out;
+    }
+
+    /** Bespoke art per input: HDMI 1-4 each have their own, then composite video, then a generic door. */
+    private static int inputArt(String label) {
+        String l = label.toLowerCase(java.util.Locale.US);
+        if (l.startsWith("hdmi")) {
+            switch (l.replaceAll("\\D", "")) {
+                case "1": return R.drawable.art_hdmi1;
+                case "2": return R.drawable.art_hdmi2;
+                case "3": return R.drawable.art_hdmi3;
+                case "4": return R.drawable.art_hdmi4;
+            }
+        }
+        if (l.contains("video") || l.contains("composite") || l.contains("component") || l.contains("av"))
+            return R.drawable.art_video;
+        return R.drawable.art_input;
     }
 
     public static List<Tile> settings(Context ctx, Theme theme) {

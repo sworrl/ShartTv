@@ -13,7 +13,8 @@ import java.net.URLEncoder;
 
 /**
  * Lightweight weather + location engine.
- *   Location: BeaconFix (mDNS _beaconfix._tcp, or a configured URL) -> manual lat/lon -> cache.
+ *   Location: BeaconFix (mDNS _beaconfix._tcp, or a configured URL) -> manual lat/lon -> the TV's
+ *             own network location (Wi-Fi based, needs Location on) -> cache -> seed.
  *   Weather:  Open-Meteo current endpoint (HTTPS, no key, SSL-pinned in network_security_config).
  * All network runs off the UI thread; results are cached to prefs. Fetch cadence is minutes, so
  * this never touches the render loop.
@@ -26,7 +27,9 @@ public class WeatherEngine {
     private final SharedPreferences sp;
     private Listener listener;
     private volatile boolean running;
+    private volatile int gen;   // bumps on every start(); a loop from an older start() exits
     private Thread worker;
+    private static final java.util.concurrent.atomic.AtomicBoolean ONCE_BUSY = new java.util.concurrent.atomic.AtomicBoolean();
 
     private static final long REFRESH_MS = 10 * 60 * 1000;  // 10 min
     private static final int BEACONFIX_PORT = 47822;
@@ -44,24 +47,52 @@ public class WeatherEngine {
         // Emit cached immediately so the UI themes right away.
         Wx cached = readCachedWx();
         if (cached != null && listener != null) listener.onWeather(cached, readCachedLoc());
-        worker = new Thread(this::loop, "sharttv-wx");
+        final int my = ++gen;
+        worker = new Thread(() -> loop(my), "sharttv-wx");
         worker.setDaemon(true);
         worker.start();
     }
 
     public void stop() { running = false; if (worker != null) worker.interrupt(); }
 
-    private void loop() {
-        while (running) {
+    /** One fetch now, off-thread, if the cache is older than {@code maxAgeMs}. For callers that
+     *  aren't on screen (the hour chime) and just need a fresh enough snapshot. */
+    public void refreshIfOlderThan(long maxAgeMs) {
+        if (System.currentTimeMillis() - sp.getLong("w_at", 0) < maxAgeMs) return;
+        if (!ONCE_BUSY.compareAndSet(false, true)) return;   // one already in flight
+        Thread t = new Thread(() -> {
+            try { fetchOnce(); } catch (Exception ignored) {} finally { ONCE_BUSY.set(false); }
+        }, "sharttv-wx-once");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    private void fetchOnce() {
+        Loc loc = resolveLocation();
+        if (loc == null || !loc.valid) return;
+        Wx wx = fetchWeather(loc.lat, loc.lon);
+        if (wx == null) return;
+        wx.lat = loc.lat; wx.lon = loc.lon; wx.place = loc.place;
+        fetchEcmwf(wx, loc.lat, loc.lon);
+        fetchAqi(wx, loc.lat, loc.lon);
+        wx.classify();
+        cache(wx, loc);
+        android.util.Log.i("ShartWx", "bg refresh " + loc.source + " " + loc.place + " " + f(wx.tempC));
+    }
+
+    private static long f(double c) { return Math.round(c * 9 / 5 + 32); }
+
+    private void loop(int my) {
+        while (running && gen == my) {
             try {
                 Loc loc = resolveLocation();
-                android.util.Log.i("ShartWx", "loc=" + (loc==null?"null":(loc.source+" "+loc.lat+","+loc.lon)));
+                android.util.Log.i("ShartWx", "loc=" + (loc==null?"null":(loc.source+" "+loc.lat+","+loc.lon+" "+loc.place)));
                 if (loc != null && loc.valid) {
                     Wx wx = fetchWeather(loc.lat, loc.lon);
                     android.util.Log.i("ShartWx", "fetch=" + (wx==null?"NULL":("ok code="+wx.code+" fcDays="+(wx.fcDay==null?0:wx.fcDay.length))));
                     if (wx != null) {
                         wx.lat = loc.lat; wx.lon = loc.lon; wx.place = loc.place;
-                        fetchWindy(wx, loc.lat, loc.lon);
+                        fetchEcmwf(wx, loc.lat, loc.lon);
                         fetchAqi(wx, loc.lat, loc.lon);
                         wx.classify();
                         cache(wx, loc);
@@ -72,7 +103,7 @@ public class WeatherEngine {
             } catch (Exception ignored) {}
             // sleep in small slices so stop() is responsive
             long end = System.currentTimeMillis() + REFRESH_MS;
-            while (running && System.currentTimeMillis() < end) {
+            while (running && gen == my && System.currentTimeMillis() < end) {
                 try { Thread.sleep(1000); } catch (InterruptedException e) { return; }
             }
         }
@@ -98,19 +129,137 @@ public class WeatherEngine {
             Loc l = new Loc(); l.valid = true; l.lat = mlat; l.lon = mlon; l.source = "manual"; l.place = "Set location";
             return l;
         }
+        // 3b) the TV's own network location (follows the TV if it moves)
+        Loc tv = tvLocation();
+        if (tv != null) return tv;
         // 4) last cached
         Loc cached = readCachedLoc();
         if (cached != null && cached.valid) return cached;
-        // 5) seed fallback: owner's last-known BeaconFix fix, so weather works before a live fix.
-        //    BeaconFix / manual / cache all override this automatically.
-        Loc seed = new Loc();
-        seed.valid = true; seed.lat = SEED_LAT; seed.lon = SEED_LON; seed.place = SEED_PLACE; seed.source = "seed";
-        return seed;
+        // 5) optional seed from app/location.properties (gitignored), so weather works before any fix
+        try {
+            String la = com.sharttv.launcher.BuildConfig.SEED_LAT, lo = com.sharttv.launcher.BuildConfig.SEED_LON;
+            if (!la.isEmpty() && !lo.isEmpty()) {
+                Loc seed = new Loc();
+                seed.valid = true; seed.lat = Double.parseDouble(la); seed.lon = Double.parseDouble(lo);
+                seed.place = com.sharttv.launcher.BuildConfig.SEED_PLACE; seed.source = "seed";
+                return seed;
+            }
+        } catch (NumberFormatException ignored) {}
+        return null;
     }
 
-    // Owner's last-known location. Overridden by any live/real fix.
-    private static final double SEED_LAT = 0, SEED_LON = 0;
-    private static final String SEED_PLACE = "";
+    /** Last-known (or a fresh one-shot) fix from the TV's network/fused provider, with a place name. */
+    private Loc tvLocation() {
+        try {
+            if (ctx.checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) return null;
+            android.location.LocationManager lm = (android.location.LocationManager) ctx.getSystemService(Context.LOCATION_SERVICE);
+            if (lm == null || !lm.isLocationEnabled()) return null;
+            android.location.Location best = null;
+            for (String p : new String[]{"fused", android.location.LocationManager.NETWORK_PROVIDER}) {
+                try {
+                    android.location.Location l = lm.getLastKnownLocation(p);
+                    if (l != null && (best == null || l.getTime() > best.getTime())) best = l;
+                } catch (Exception ignored) {}
+            }
+            if (best == null || System.currentTimeMillis() - best.getTime() > 30 * 60_000L) {
+                android.location.Location fresh = currentLocation(lm);
+                if (fresh != null) best = fresh;
+            }
+            if (best == null) return null;
+            Loc l = new Loc();
+            l.valid = true; l.lat = best.getLatitude(); l.lon = best.getLongitude();
+            l.source = "tv:" + best.getProvider();
+            l.place = placeName(l.lat, l.lon);
+            return l;
+        } catch (Exception e) { return null; }
+    }
+
+    private android.location.Location currentLocation(android.location.LocationManager lm) {
+        if (android.os.Build.VERSION.SDK_INT < 30
+                || !lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)) return null;
+        final android.location.Location[] out = {null};
+        final java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(1);
+        try {
+            lm.getCurrentLocation(android.location.LocationManager.NETWORK_PROVIDER, null, ctx.getMainExecutor(),
+                    l -> { out[0] = l; done.countDown(); });
+            done.await(12, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (Exception ignored) {}
+        return out[0];
+    }
+
+    /** "Springfield, IL" for a coordinate, cached per ~1 km so we don't re-ask on every fetch. */
+    private String placeName(double lat, double lon) {
+        String key = String.format(java.util.Locale.US, "geo_%.2f_%.2f", lat, lon);
+        String hit = sp.getString(key, null);
+        if (hit != null) return hit;
+        String name = "";
+        try {
+            if (android.location.Geocoder.isPresent()) {
+                java.util.List<android.location.Address> a =
+                        new android.location.Geocoder(ctx, java.util.Locale.US).getFromLocation(lat, lon, 1);
+                if (a != null && !a.isEmpty()) {
+                    android.location.Address ad = a.get(0);
+                    String town = ad.getLocality() != null ? ad.getLocality() : ad.getSubAdminArea();
+                    name = join(town, state(ad.getAdminArea()));
+                }
+            }
+        } catch (Exception ignored) {}
+        if (name.isEmpty()) try {   // no Geocoder backend: a keyless reverse lookup
+            HttpURLConnection c = (HttpURLConnection) new URL(String.format(java.util.Locale.US,
+                    "https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=%.4f&longitude=%.4f&localityLanguage=en",
+                    lat, lon)).openConnection();
+            c.setConnectTimeout(3000); c.setReadTimeout(4000);
+            if (c.getResponseCode() == 200) {
+                JSONObject o = new JSONObject(readAll(c));
+                String town = o.optString("city", "");
+                if (town.isEmpty()) town = o.optString("locality", "");
+                String sub = o.optString("principalSubdivisionCode", "");
+                name = join(town, sub.startsWith("US-") ? sub.substring(3) : o.optString("principalSubdivision", ""));
+            }
+        } catch (Exception ignored) {}
+        if (!name.isEmpty()) sp.edit().putString(key, name).apply();
+        return name;
+    }
+
+    private static String join(String a, String b) {
+        a = a == null ? "" : a.trim(); b = b == null ? "" : b.trim();
+        return a.isEmpty() ? b : b.isEmpty() ? a : a + ", " + b;
+    }
+
+    private static final String STATES = "Alabama:AL,Alaska:AK,Arizona:AZ,Arkansas:AR,California:CA,Colorado:CO,"
+            + "Connecticut:CT,Delaware:DE,Florida:FL,Georgia:GA,Hawaii:HI,Idaho:ID,Illinois:IL,Indiana:IN,Iowa:IA,"
+            + "Kansas:KS,Kentucky:KY,Louisiana:LA,Maine:ME,Maryland:MD,Massachusetts:MA,Michigan:MI,Minnesota:MN,"
+            + "Mississippi:MS,Missouri:MO,Montana:MT,Nebraska:NE,Nevada:NV,New Hampshire:NH,New Jersey:NJ,"
+            + "New Mexico:NM,New York:NY,North Carolina:NC,North Dakota:ND,Ohio:OH,Oklahoma:OK,Oregon:OR,"
+            + "Pennsylvania:PA,Rhode Island:RI,South Carolina:SC,South Dakota:SD,Tennessee:TN,Texas:TX,Utah:UT,"
+            + "Vermont:VT,Virginia:VA,Washington:WA,West Virginia:WV,Wisconsin:WI,Wyoming:WY";
+
+    /** "West Virginia" -> "WV"; anything else unchanged. */
+    private static String state(String s) {
+        if (s == null) return "";
+        for (String kv : STATES.split(",")) {
+            int i = kv.indexOf(':');
+            if (kv.substring(0, i).equals(s)) return kv.substring(i + 1);
+        }
+        return s;
+    }
+
+    /** "Springfield, IL  ·  ECMWF  ·  Updated 7:52 PM" — the hero's place line, with how fresh it is. */
+    public static String placeLine(Context c, Wx w, Loc l) {
+        String place = "";
+        if (l != null) place = l.place != null && !l.place.isEmpty() ? l.place
+                : String.format(java.util.Locale.US, "%.2f, %.2f", l.lat, l.lon);
+        if (l != null && "seed".equals(l.source)) place += " (default)";
+        StringBuilder b = new StringBuilder(place);
+        if (w != null && w.model != null) b.append("   ·   ").append(w.model);
+        if (w != null && w.fetchedAt > 0) {
+            long age = System.currentTimeMillis() - w.fetchedAt;
+            b.append("   ·   Updated ").append(android.text.format.DateFormat.getTimeFormat(c).format(new java.util.Date(w.fetchedAt)));
+            if (age > 30 * 60_000L) b.append(" (old)");
+        }
+        return b.toString();
+    }
 
     private Loc beaconfix(String base) {
         try {
@@ -173,63 +322,44 @@ public class WeatherEngine {
 
     // ---------- Weather ----------
 
-    /** Windy Point Forecast (ECMWF): overrides Open-Meteo current values with the model when keyed. */
-    private void fetchWindy(Wx w, double lat, double lon) {
-        String key = com.sharttv.launcher.BuildConfig.WINDY_POINT_KEY;
-        if (key == null || key.isEmpty()) return;
+    /** ECMWF IFS 0.25° (via Open-Meteo, keyless): overrides the best-match current values with the
+     *  ECMWF model wherever it has them (it has no visibility or UV, so those stay best-match). */
+    private void fetchEcmwf(Wx w, double lat, double lon) {
         try {
-            JSONObject body = new JSONObject();
-            body.put("lat", lat); body.put("lon", lon);
-            body.put("model", "ecmwf");
-            body.put("parameters", new org.json.JSONArray(new String[]{
-                "temp","wind","windGust","dewpoint","rh","pressure","ptype","lclouds","mclouds","hclouds"}));
-            body.put("levels", new org.json.JSONArray(new String[]{"surface"}));
-            body.put("key", key);
-            HttpURLConnection c = (HttpURLConnection) new URL("https://api.windy.com/api/point-forecast/v2").openConnection();
-            c.setConnectTimeout(4000); c.setReadTimeout(6000); c.setRequestMethod("POST");
-            c.setRequestProperty("Content-Type", "application/json");
-            c.setDoOutput(true);
-            c.getOutputStream().write(body.toString().getBytes("UTF-8"));
-            c.getOutputStream().close();
-            if (c.getResponseCode() != 200) { android.util.Log.i("ShartWx","windy http "+c.getResponseCode()); return; }
-            JSONObject r = new JSONObject(readAll(c));
-            org.json.JSONArray ts = r.optJSONArray("ts");
-            if (ts == null || ts.length() == 0) return;
-            long nowMs = System.currentTimeMillis();
-            int idx = 0; long best = Long.MAX_VALUE;
-            for (int i = 0; i < ts.length(); i++) {
-                long d = Math.abs(ts.optLong(i) - nowMs);
-                if (d < best) { best = d; idx = i; }
-            }
-            Double temp = at(r, "temp-surface", idx);     // Kelvin
-            Double wu = at(r, "wind_u-surface", idx), wv = at(r, "wind_v-surface", idx); // m/s
-            Double gust = at(r, "gust-surface", idx);     // m/s
-            Double dew = at(r, "dewpoint-surface", idx);  // Kelvin
-            Double rh = at(r, "rh-surface", idx);         // %
-            Double pr = at(r, "pressure-surface", idx);   // Pa
-            Double lc = at(r, "lclouds-surface", idx), mc = at(r, "mclouds-surface", idx), hc = at(r, "hclouds-surface", idx);
-            if (temp != null) w.tempC = temp - 273.15;
-            if (dew != null) w.dewC = dew - 273.15;
-            if (rh != null) w.humidity = (int) Math.round(rh);
-            if (pr != null) w.pressureHpa = pr / 100.0;
-            if (wu != null && wv != null) {
-                w.windKmh = Math.sqrt(wu*wu + wv*wv) * 3.6;
-                w.windDirDeg = (Math.toDegrees(Math.atan2(-wu, -wv)) + 360) % 360;
-            }
-            if (gust != null) w.windGust = gust * 3.6;
-            if (lc != null) w.cloudLow = (int) Math.round(lc);
-            if (mc != null) w.cloudMid = (int) Math.round(mc);
-            if (hc != null) w.cloudHigh = (int) Math.round(hc);
+            String url = "https://api.open-meteo.com/v1/forecast?latitude="
+                    + String.format(java.util.Locale.US, "%.4f", lat) + "&longitude="
+                    + String.format(java.util.Locale.US, "%.4f", lon)
+                    + "&current=temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,"
+                    + "cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,dew_point_2m,pressure_msl,"
+                    + "surface_pressure,cape,wind_speed_10m,wind_direction_10m,wind_gusts_10m&models=ecmwf_ifs025";
+            HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+            c.setConnectTimeout(4000); c.setReadTimeout(5000);
+            c.setRequestProperty("User-Agent", "ShartTV/0.1");
+            if (c.getResponseCode() != 200) { android.util.Log.i("ShartWx", "ecmwf http " + c.getResponseCode()); return; }
+            JSONObject cur = new JSONObject(readAll(c)).optJSONObject("current");
+            if (cur == null || cur.isNull("temperature_2m")) return;
+            w.tempC = num(cur, "temperature_2m", w.tempC);
+            w.feelsC = num(cur, "apparent_temperature", w.feelsC);
+            w.humidity = (int) Math.round(num(cur, "relative_humidity_2m", w.humidity));
+            w.precipMm = num(cur, "precipitation", w.precipMm);
+            if (!cur.isNull("weather_code")) w.code = cur.optInt("weather_code", w.code);
+            w.cloudPct = (int) Math.round(num(cur, "cloud_cover", w.cloudPct));
+            w.cloudLow = (int) Math.round(num(cur, "cloud_cover_low", w.cloudLow));
+            w.cloudMid = (int) Math.round(num(cur, "cloud_cover_mid", w.cloudMid));
+            w.cloudHigh = (int) Math.round(num(cur, "cloud_cover_high", w.cloudHigh));
+            w.dewC = num(cur, "dew_point_2m", w.dewC);
+            w.pressureHpa = num(cur, "pressure_msl", w.pressureHpa);
+            w.surfacePressureHpa = num(cur, "surface_pressure", w.surfacePressureHpa);
+            w.cape = num(cur, "cape", w.cape);
+            w.windKmh = num(cur, "wind_speed_10m", w.windKmh);
+            w.windDirDeg = num(cur, "wind_direction_10m", w.windDirDeg);
+            w.windGust = num(cur, "wind_gusts_10m", w.windGust);
             w.model = "ECMWF";
-            android.util.Log.i("ShartWx", "windy ok model=ECMWF idx=" + idx);
-        } catch (Exception e) { android.util.Log.i("ShartWx", "windy err " + e.getMessage()); }
+        } catch (Exception e) { android.util.Log.i("ShartWx", "ecmwf err " + e.getMessage()); }
     }
 
-    private static Double at(JSONObject r, String key, int idx) {
-        org.json.JSONArray a = r.optJSONArray(key);
-        if (a == null || idx >= a.length() || a.isNull(idx)) return null;
-        double v = a.optDouble(idx, Double.NaN);
-        return Double.isNaN(v) ? null : v;
+    private static double num(JSONObject o, String k, double fallback) {
+        return o.isNull(k) ? fallback : o.optDouble(k, fallback);
     }
 
     private void fetchAqi(Wx w, double lat, double lon) {
@@ -254,7 +384,7 @@ public class WeatherEngine {
                     + "precipitation,weather_code,cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,"
                     + "dew_point_2m,pressure_msl,surface_pressure,visibility,uv_index,cape,"
                     + "wind_speed_10m,wind_direction_10m,wind_gusts_10m"
-                    + "&hourly=precipitation_probability"
+                    + "&hourly=temperature_2m,weather_code,precipitation_probability"
                     + "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,"
                     + "precipitation_probability_max&forecast_days=6&timezone=auto";
             HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
@@ -283,6 +413,7 @@ public class WeatherEngine {
             w.cloudLow = cur.optInt("cloud_cover_low", -1);
             w.cloudMid = cur.optInt("cloud_cover_mid", -1);
             w.cloudHigh = cur.optInt("cloud_cover_high", -1);
+            parseHourly(w, root.optJSONObject("hourly"), root.optInt("utc_offset_seconds", 0));
             org.json.JSONObject daily = root.optJSONObject("daily");
             if (daily != null) {
                 org.json.JSONArray hi = daily.optJSONArray("temperature_2m_max");
@@ -318,6 +449,34 @@ public class WeatherEngine {
         } catch (Exception e) { android.util.Log.e("ShartWx", "fetch err", e); return null; }
     }
 
+    /** Keep the hourly forecast from the current hour through the next 12, keyed by epoch hour. */
+    private static void parseHourly(Wx w, JSONObject h, int utcOffsetSec) {
+        if (h == null) return;
+        org.json.JSONArray time = h.optJSONArray("time"), temp = h.optJSONArray("temperature_2m");
+        org.json.JSONArray code = h.optJSONArray("weather_code"), pop = h.optJSONArray("precipitation_probability");
+        if (time == null || temp == null) return;
+        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm", java.util.Locale.US);
+        f.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+        long thisHour = System.currentTimeMillis() / 3_600_000L * 3_600_000L;
+        java.util.List<Integer> keep = new java.util.ArrayList<>();
+        java.util.List<Long> at = new java.util.ArrayList<>();
+        for (int i = 0; i < time.length(); i++) {
+            try {
+                long ms = f.parse(time.getString(i)).getTime() - utcOffsetSec * 1000L;   // local -> epoch
+                if (ms >= thisHour && ms <= thisHour + 12 * 3_600_000L) { keep.add(i); at.add(ms); }
+            } catch (Exception ignored) {}
+        }
+        int n = keep.size();
+        w.hrAt = new long[n]; w.hrTempC = new double[n]; w.hrCode = new int[n]; w.hrPop = new int[n];
+        for (int k = 0; k < n; k++) {
+            int i = keep.get(k);
+            w.hrAt[k] = at.get(k);
+            w.hrTempC[k] = temp.optDouble(i, Double.NaN);
+            w.hrCode[k] = code != null ? code.optInt(i, -1) : -1;
+            w.hrPop[k] = pop != null ? pop.optInt(i, -1) : -1;
+        }
+    }
+
     // ---------- Cache ----------
 
     private void cache(Wx w, Loc l) {
@@ -326,11 +485,13 @@ public class WeatherEngine {
           .putFloat("w_temp", (float) w.tempC).putFloat("w_precip", (float) w.precipMm)
           .putFloat("w_wind", (float) w.windKmh).putInt("w_cloud", (int) w.cloudPct)
           .putFloat("w_hi", (float) w.tempMaxC).putFloat("w_lo", (float) w.tempMinC).putFloat("w_wdir", (float) w.windDirDeg)
-          .putLong("w_at", w.fetchedAt).putString("w_place", w.place)
+          .putLong("w_at", w.fetchedAt).putString("w_place", w.place).putString("w_model", w.model)
+          .putString("l_place", l.place == null ? "" : l.place).putString("l_src", l.source == null ? "" : l.source)
           .putFloat("l_lat", (float) l.lat).putFloat("l_lon", (float) l.lon)
           .putInt("l_sunrise", l.sunriseSec).putInt("l_sunset", l.sunsetSec)
           .putInt("l_dawn", l.civilDawnSec).putInt("l_dusk", l.civilDuskSec)
           .putInt("l_noon", l.solarNoonSec)
+          .putString("w_hourly", hourlyJson(w))
           .apply();
     }
 
@@ -342,6 +503,8 @@ public class WeatherEngine {
         w.windKmh = sp.getFloat("w_wind", 0); w.cloudPct = sp.getInt("w_cloud", 0);
         w.tempMaxC = sp.getFloat("w_hi", Float.NaN); w.tempMinC = sp.getFloat("w_lo", Float.NaN); w.windDirDeg = sp.getFloat("w_wdir", 0);
         w.fetchedAt = sp.getLong("w_at", 0); w.place = sp.getString("w_place", "");
+        w.model = sp.getString("w_model", w.model);
+        readHourly(w, sp.getString("w_hourly", null));
         w.classify();
         return w;
     }
@@ -353,7 +516,32 @@ public class WeatherEngine {
         l.sunriseSec = sp.getInt("l_sunrise", -1); l.sunsetSec = sp.getInt("l_sunset", -1);
         l.civilDawnSec = sp.getInt("l_dawn", -1); l.civilDuskSec = sp.getInt("l_dusk", -1);
         l.solarNoonSec = sp.getInt("l_noon", -1);
+        l.place = sp.getString("l_place", sp.getString("w_place", "")); l.source = sp.getString("l_src", "");
         return l;
+    }
+
+    private static String hourlyJson(Wx w) {
+        org.json.JSONArray a = new org.json.JSONArray();
+        if (w.hrAt != null) for (int k = 0; k < w.hrAt.length; k++) {
+            try {
+                a.put(new org.json.JSONArray().put(w.hrAt[k]).put(w.hrTempC[k]).put(w.hrCode[k]).put(w.hrPop[k]));
+            } catch (Exception ignored) {}
+        }
+        return a.toString();
+    }
+
+    private static void readHourly(Wx w, String json) {
+        if (json == null) return;
+        try {
+            org.json.JSONArray a = new org.json.JSONArray(json);
+            int n = a.length();
+            w.hrAt = new long[n]; w.hrTempC = new double[n]; w.hrCode = new int[n]; w.hrPop = new int[n];
+            for (int k = 0; k < n; k++) {
+                org.json.JSONArray e = a.getJSONArray(k);
+                w.hrAt[k] = e.getLong(0); w.hrTempC[k] = e.optDouble(1, Double.NaN);
+                w.hrCode[k] = e.optInt(2, -1); w.hrPop[k] = e.optInt(3, -1);
+            }
+        } catch (Exception ignored) {}
     }
 
     // ---------- helpers ----------

@@ -4,6 +4,9 @@
   <!-- Weather needs network. No ads, no telemetry, no tracking SDKs. Egress is pinned (see network_security_config) and limited to Open-Meteo + your own BeaconFix. -->
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+  <!-- the TV's Wi-Fi network location, so the weather follows the TV wherever it is -->
+  <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
   <uses-feature android:name="android.software.leanback" android:required="false"/>
   <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
 
@@ -57,6 +60,18 @@
     <activity
         android:name=".SettingsActivity"
         android:exported="true"
+        android:screenOrientation="landscape"
+        android:theme="@style/Theme.ShartTv"/>
+
+    <activity
+        android:name=".ProfilesActivity"
+        android:exported="false"
+        android:screenOrientation="landscape"
+        android:theme="@style/Theme.ShartTv"/>
+
+    <activity
+        android:name=".WeatherActivity"
+        android:exported="false"
         android:screenOrientation="landscape"
         android:theme="@style/Theme.ShartTv"/>
 

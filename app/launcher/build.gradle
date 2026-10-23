@@ -6,6 +6,11 @@ android {
   def windy = new Properties()
   if (windyFile.exists()) windy.load(new FileInputStream(windyFile))
   def wkey = { k -> "\"" + (windy[k] ?: "") + "\"" }
+  // Optional fallback location for before the TV has a fix (gitignored; see README).
+  def locFile = rootProject.file("location.properties")
+  def loc = new Properties()
+  if (locFile.exists()) loc.load(new FileInputStream(locFile))
+  def lkey = { k -> "\"" + (loc[k] ?: "") + "\"" }
   buildFeatures { buildConfig true }
   defaultConfig {
     applicationId "com.sharttv.launcher"
@@ -13,7 +18,9 @@ android {
     targetSdk 34
     versionCode 1
     versionName "0.1"
-    buildConfigField "String", "WINDY_POINT_KEY", wkey("WINDY_POINT_KEY")
+    buildConfigField "String", "SEED_LAT", lkey("SEED_LAT")
+    buildConfigField "String", "SEED_LON", lkey("SEED_LON")
+    buildConfigField "String", "SEED_PLACE", lkey("SEED_PLACE")
     buildConfigField "String", "WINDY_WEBCAMS_KEY", wkey("WINDY_WEBCAMS_KEY")
     buildConfigField "String", "WINDY_MAP_KEY", wkey("WINDY_MAP_KEY")
   }

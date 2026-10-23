@@ -63,6 +63,19 @@ public class Wx {
     public int[] fcCode;     // WMO code per day
     public double[] fcMax, fcMin;
 
+    // Hourly forecast from the current hour on (epoch ms of each hour; may be null).
+    public long[] hrAt;
+    public double[] hrTempC;
+    public int[] hrCode, hrPop;
+
+    /** Index of the hourly entry for the hour containing {@code epochMs}, or -1. */
+    public int hourIndex(long epochMs) {
+        if (hrAt == null) return -1;
+        long h = epochMs / 3_600_000L * 3_600_000L;
+        for (int i = 0; i < hrAt.length; i++) if (hrAt[i] == h) return i;
+        return -1;
+    }
+
     /** WMO code -> single glyph for the forecast strip. */
     public static String glyph(int c) {
         if (c == 0 || c == 1) return "\u2600";

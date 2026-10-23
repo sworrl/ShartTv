@@ -20,3 +20,11 @@ keystore.properties
 # windy api keys
 app/windy.properties
 windy.properties
+
+# owner location seed
+app/location.properties
+location.properties
+
+# all Gradle build output
+**/build/
+.gradle/
