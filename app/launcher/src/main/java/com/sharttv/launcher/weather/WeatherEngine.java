@@ -386,7 +386,7 @@ public class WeatherEngine {
                     + "wind_speed_10m,wind_direction_10m,wind_gusts_10m"
                     + "&hourly=temperature_2m,weather_code,precipitation_probability"
                     + "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,"
-                    + "precipitation_probability_max&forecast_days=6&timezone=auto";
+                    + "precipitation_probability_max,wind_speed_10m_max&forecast_days=7&timezone=auto";
             HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
             c.setConnectTimeout(4000); c.setReadTimeout(5000);
             c.setRequestProperty("User-Agent", "ShartTV/0.1");
@@ -430,17 +430,21 @@ public class WeatherEngine {
                 if (ppm != null && ppm.length() > 0) w.precipProb = ppm.optDouble(0, Double.NaN);
                 org.json.JSONArray dcode = daily.optJSONArray("weather_code");
                 org.json.JSONArray dtime = daily.optJSONArray("time");
-                int nd = dtime != null ? Math.min(5, dtime.length()) : 0;
+                int nd = dtime != null ? Math.min(7, dtime.length()) : 0;
+                org.json.JSONArray dwind = daily.optJSONArray("wind_speed_10m_max");
                 if (nd > 1) {
                     int days = nd - 1;  // skip today (index 0); show the next days
                     w.fcDay = new String[days]; w.fcCode = new int[days];
                     w.fcMax = new double[days]; w.fcMin = new double[days];
+                    w.fcPop = new int[days]; w.fcWindKmh = new double[days];
                     for (int d = 0; d < days; d++) {
                         int idx = d + 1;
                         w.fcDay[d] = dayAbbrev(dtime.optString(idx, ""));
                         w.fcCode[d] = dcode != null ? dcode.optInt(idx, 0) : 0;
                         w.fcMax[d] = hi != null ? hi.optDouble(idx, Double.NaN) : Double.NaN;
                         w.fcMin[d] = lo != null ? lo.optDouble(idx, Double.NaN) : Double.NaN;
+                        w.fcPop[d] = ppm != null ? ppm.optInt(idx, -1) : -1;
+                        w.fcWindKmh[d] = dwind != null ? dwind.optDouble(idx, Double.NaN) : Double.NaN;
                     }
                 }
             }
@@ -449,7 +453,7 @@ public class WeatherEngine {
         } catch (Exception e) { android.util.Log.e("ShartWx", "fetch err", e); return null; }
     }
 
-    /** Keep the hourly forecast from the current hour through the next 12, keyed by epoch hour. */
+    /** Keep the hourly forecast from the current hour through the next 24, keyed by epoch hour. */
     private static void parseHourly(Wx w, JSONObject h, int utcOffsetSec) {
         if (h == null) return;
         org.json.JSONArray time = h.optJSONArray("time"), temp = h.optJSONArray("temperature_2m");
@@ -463,7 +467,7 @@ public class WeatherEngine {
         for (int i = 0; i < time.length(); i++) {
             try {
                 long ms = f.parse(time.getString(i)).getTime() - utcOffsetSec * 1000L;   // local -> epoch
-                if (ms >= thisHour && ms <= thisHour + 12 * 3_600_000L) { keep.add(i); at.add(ms); }
+                if (ms >= thisHour && ms <= thisHour + 24 * 3_600_000L) { keep.add(i); at.add(ms); }
             } catch (Exception ignored) {}
         }
         int n = keep.size();

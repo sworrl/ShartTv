@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  HOME redirect + recent-app tracking. Fires on window-state changes: when launcherx takes focus it
+  HOME redirect + recent-app tracking. Fires on window-state changes (and on launcherx's first
+  content draw, which arrives much sooner when HOME also wakes the screensaver): when launcherx shows it
   launches Shart TV over it; when another launchable app comes up it records that package name for
   the Recent row. No window content is read. On this locked build Sony hard-forces launcherx for the
   HOME intent, so a brief launcherx frame before us is unavoidable without root.
 -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:notificationTimeout="0"
+    android:notificationTimeout="30"
     android:canRetrieveWindowContent="false"
     android:description="@string/home_redirect_desc"/>

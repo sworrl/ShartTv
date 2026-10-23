@@ -15,6 +15,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import com.sharttv.launcher.ui.CardFx;
 import com.sharttv.launcher.ui.Fonts;
 import com.sharttv.launcher.ui.Glass;
 import com.sharttv.launcher.ui.HourClock;
@@ -50,13 +51,13 @@ public class SettingsActivity extends Activity {
             Color.parseColor("#1A1026"), Color.parseColor("#04140E")
     };
 
-    private static final String[] SECTIONS = {"Colors", "Home layout", "Hour clock", "Weather", "Learning"};
+    private static final String[] SECTIONS = {"Colors", "Home layout", "Hour clock", "Weather", "Inputs", "Learning"};
     private static final String[] BLURBS = {
             "Accent and background", "Tiles, rows and motion", "The top-of-the-hour chime",
-            "Sky backdrop and location", "What the home learns"};
+            "Sky backdrop and location", "Name what's plugged in", "What the home learns"};
     private static final int[] ART = {
             R.drawable.art_set_colors, R.drawable.art_set_layout, R.drawable.art_set_clock,
-            R.drawable.art_set_weather, R.drawable.art_set_learning};
+            R.drawable.art_set_weather, R.drawable.art_input, R.drawable.art_set_learning};
 
     private int dp(float v) {
         return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, getResources().getDisplayMetrics());
@@ -136,9 +137,12 @@ public class SettingsActivity extends Activity {
         pcol.addView(rule, rlp);
         ScrollView sv = new ScrollView(this);   // a safety net; every section is laid out to fit
         sv.setVerticalScrollBarEnabled(false);
+        sv.setClipChildren(false);
         sv.setClipToPadding(false);
         pane = new LinearLayout(this);
         pane.setOrientation(LinearLayout.VERTICAL);
+        pane.setClipChildren(false);
+        pane.setPadding(dp(6), 0, dp(6), dp(6));   // room for focused cards to lift
         sv.addView(pane);
         pcol.addView(sv, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
@@ -152,6 +156,7 @@ public class SettingsActivity extends Activity {
         if (sky != null) sky.startAnim();
         h.removeCallbacks(skyTick);
         h.post(skyTick);
+        if (pane != null && section == 4) rebuildPane();   // back from naming an input
     }
 
     @Override protected void onPause() {
@@ -209,12 +214,13 @@ public class SettingsActivity extends Activity {
 
         card.setOnFocusChangeListener((v, has) -> {
             v.setBackground(Glass.card(t.surfaceColor, t.accentColor, has, rad));
-            art.animate().alpha(has ? 1f : 0.7f).scaleX(has ? 1.06f : 1f).scaleY(has ? 1.06f : 1f)
-                    .setDuration(t.focusAnimMs).start();
+            art.animate().alpha(has ? 1f : 0.7f).scaleX(has ? 1.08f : 1f).scaleY(has ? 1.08f : 1f)
+                    .setDuration(t.focusAnimMs + 200).start();
+            CardFx.focus(v, has, 1.03f, rad, t.accentColor, t.focusAnimMs);
             name.setTextColor(has ? t.accentColor : 0xFFF4ECDC);
             if (has && section != i) showSection(i);
         });
-        card.setOnClickListener(v -> focusFirst(pane));
+        card.setOnClickListener(v -> CardFx.click(v, rad, t.accentColor, () -> focusFirst(pane)));
         return card;
     }
 
@@ -245,7 +251,8 @@ public class SettingsActivity extends Activity {
             case 1: buildLayout(); break;
             case 2: buildClock(); break;
             case 3: buildWeather(); break;
-            case 4: buildLearning(); break;
+            case 4: buildInputs(); break;
+            case 5: buildLearning(); break;
         }
         if (key != null) {
             View again = pane.findViewWithTag(key);
@@ -271,8 +278,12 @@ public class SettingsActivity extends Activity {
 
     private void buildLayout() {
         label("Apps show as");
-        choice("icons", new String[]{"Banners", "Icons"}, t.iconStyle.equals("banner") ? 0 : 1,
-                k -> { t.iconStyle = k == 0 ? "banner" : "icon"; commit(); });
+        choice("icons", new String[]{"Painted art", "Banners", "Icons"},
+                t.appArt ? 0 : t.iconStyle.equals("banner") ? 1 : 2, k -> {
+                    t.appArt = k == 0;
+                    if (k > 0) t.iconStyle = k == 1 ? "banner" : "icon";
+                    commit();
+                });
         label("Lists");
         choice("list", new String[]{"Shelves", "Grid"}, t.listStyle.equals("rows") ? 0 : 1,
                 k -> { t.listStyle = k == 0 ? "rows" : "grid"; commit(); });
@@ -313,7 +324,7 @@ public class SettingsActivity extends Activity {
                 "12".equals(t.clockFormat) ? 1 : "24".equals(t.clockFormat) ? 2 : 0,
                 k -> { t.clockFormat = new String[]{"auto", "12", "24"}[k]; commit(); });
         View play = pill("play", "▶  Preview the hour change", true);
-        play.setOnClickListener(v -> HomeRedirectService.previewChime());
+        play.setOnClickListener(v -> CardFx.click(v, dp(18), t.accentColor, HomeRedirectService::previewChime));
         LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) play.getLayoutParams();
         lp.topMargin = dp(14);
         pane.addView(play);
@@ -352,10 +363,10 @@ public class SettingsActivity extends Activity {
         c.setLayoutParams(lp);
         c.setOnFocusChangeListener((v, has) -> {
             v.setBackground(Glass.card(t.surfaceColor, has || on ? t.accentColor : t.textDimColor, has || on, rad));
-            v.animate().scaleX(has ? 1.05f : 1f).scaleY(has ? 1.05f : 1f).setDuration(t.focusAnimMs).start();
+            CardFx.focus(v, has, 1.06f, rad, t.accentColor, t.focusAnimMs);
             if (has) hc.demo(2_200);   // roll the hour over so you can see the style move
         });
-        c.setOnClickListener(v -> { t.clockStyle = key; commit(); });
+        c.setOnClickListener(v -> CardFx.click(v, rad, t.accentColor, () -> { t.clockStyle = key; commit(); }));
         return c;
     }
 
@@ -382,6 +393,73 @@ public class SettingsActivity extends Activity {
                 ? " · updated " + android.text.format.DateFormat.getTimeFormat(this).format(new java.util.Date(wx.fetchedAt))
                 : "";
         return how + (place.isEmpty() ? "" : ": " + place) + when;
+    }
+
+    /** Every input as a small art card with its name; OK opens the namer. */
+    private void buildInputs() {
+        label("Long-press an input on the home to do this from there.");
+        java.util.List<Tile> ins = Repo.inputs(this, t);
+        if (ins.isEmpty()) { note("This TV reports no external inputs."); return; }
+        LinearLayout row = null;
+        for (int i = 0; i < ins.size(); i++) {
+            if (i % 3 == 0) {
+                row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setClipChildren(false);
+                pane.addView(row);
+            }
+            row.addView(inputCard(ins.get(i)));
+        }
+        for (int k = ins.size() % 3; k > 0 && k < 3; k++)   // keep the last row's cards a third wide
+            row.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1f));
+    }
+
+    private View inputCard(final Tile in) {
+        final float rad = dp(12);
+        com.sharttv.launcher.ui.CardFrame c = new com.sharttv.launcher.ui.CardFrame(this);
+        c.setRadius(rad);
+        c.setFocusable(true);
+        c.setDefaultFocusHighlightEnabled(false);
+        c.setTag("in:" + in.key);
+        ImageView img = new ImageView(this);
+        img.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        img.setImageResource(in.art);
+        c.addView(img, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        LinearLayout cap = new LinearLayout(this);
+        cap.setOrientation(LinearLayout.VERTICAL);
+        cap.setGravity(Gravity.BOTTOM | Gravity.START);
+        cap.setPadding(dp(10), 0, dp(8), dp(7));
+        cap.setBackground(new GradientDrawable(GradientDrawable.Orientation.BL_TR, new int[]{0xE6000000, 0x50000000, 0x00000000}));
+        TextView nm = new TextView(this);
+        nm.setTypeface(Fonts.display, Typeface.BOLD);
+        nm.setText(in.label);
+        nm.setTextColor(0xFFF4ECDC);
+        nm.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        nm.setSingleLine(true);
+        nm.setEllipsize(TextUtils.TruncateAt.END);
+        TextView pt = new TextView(this);
+        pt.setTypeface(Fonts.body, Typeface.BOLD);
+        pt.setText(in.port.toUpperCase(java.util.Locale.US));
+        pt.setTextColor(t.accentColor);
+        pt.setTextSize(TypedValue.COMPLEX_UNIT_SP, 9);
+        pt.setLetterSpacing(0.12f);
+        pt.setSingleLine(true);
+        cap.addView(nm);
+        if (!in.port.startsWith(in.label)) cap.addView(pt);   // only when it's been renamed
+        c.addView(cap, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        c.setOnFocusChangeListener((v, has) -> {
+            c.setRing(has, t.accentColor);
+            CardFx.focus(v, has, 1.06f, rad, t.accentColor, t.focusAnimMs);
+        });
+        c.setOnClickListener(v -> CardFx.click(v, rad, t.accentColor, () -> startActivity(
+                new android.content.Intent(this, InputEditActivity.class)
+                        .putExtra(InputEditActivity.EXTRA_ID, in.key)
+                        .putExtra(InputEditActivity.EXTRA_PORT, in.port)
+                        .putExtra(InputEditActivity.EXTRA_PORT_ART, in.portArt))));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(92), 1f);
+        lp.setMargins(0, dp(6), dp(12), dp(6));
+        c.setLayoutParams(lp);
+        return c;
     }
 
     private void buildLearning() {
@@ -424,7 +502,7 @@ public class SettingsActivity extends Activity {
         for (int i = 0; i < opts.length; i++) {
             final int k = i;
             View p = pill(key + ":" + i, opts[i], i == cur);
-            p.setOnClickListener(v -> { if (k != cur) pick.on(k); });
+            p.setOnClickListener(v -> CardFx.click(v, dp(18), t.accentColor, () -> { if (k != cur) pick.on(k); }));
             row.addView(p);
         }
         pane.addView(row);
@@ -442,7 +520,7 @@ public class SettingsActivity extends Activity {
         p.setTag(tag);
         final float rad = dp(18);
         style(p, selected, false, rad);
-        p.setOnFocusChangeListener((v, has) -> style(p, selected, has, rad));
+        p.setOnFocusChangeListener((v, has) -> { style(p, selected, has, rad); CardFx.focus(v, has, 1.07f, rad, t.accentColor, t.focusAnimMs); });
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.setMarginEnd(dp(10));
@@ -458,7 +536,6 @@ public class SettingsActivity extends Activity {
                 : selected ? Glass.withAlpha(t.accentColor, 0xA0) : Glass.withAlpha(t.textColor, 0x30));
         p.setBackground(g);
         p.setTextColor(selected || focused ? t.accentColor : t.textColor);
-        p.animate().scaleX(focused ? 1.06f : 1f).scaleY(focused ? 1.06f : 1f).setDuration(t.focusAnimMs).start();
     }
 
     private void swatches(int[] colors, final boolean accent) {
@@ -475,10 +552,11 @@ public class SettingsActivity extends Activity {
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(54), dp(54));
             lp.setMarginEnd(dp(14));
             sw.setLayoutParams(lp);
-            sw.setOnClickListener(v -> { if (accent) t.accentColor = c; else t.bgColor = c; commit(); });
+            sw.setOnClickListener(v -> CardFx.click(v, dp(27), c | 0xFF000000,
+                    () -> { if (accent) t.accentColor = c; else t.bgColor = c; commit(); }));
             sw.setOnFocusChangeListener((v, has) -> {
                 v.setBackground(swatch(c, on, has));
-                v.animate().scaleX(has ? 1.15f : 1f).scaleY(has ? 1.15f : 1f).setDuration(t.focusAnimMs).start();
+                CardFx.focus(v, has, 1.18f, dp(27), t.accentColor, t.focusAnimMs);
             });
             row.addView(sw);
         }

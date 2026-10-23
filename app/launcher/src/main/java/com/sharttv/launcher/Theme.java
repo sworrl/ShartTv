@@ -32,6 +32,7 @@ public class Theme {
     public boolean showForecast = true;  // multi-day forecast strip in the hero
     public boolean radar = true;         // Windy radar inlay in the hero
     public String iconStyle = "banner";  // "banner" (wide app banner) or "icon" (square app icon)
+    public boolean appArt = true;        // bespoke painted art on app cards (falls back to iconStyle)
     public int tileWidthDp = 140;        // banner tile width (sized so 4 rows fit the 540dp panel)
     public int tileHeightDp = 74;
     public boolean hourChime = true;     // top-of-the-hour clock + weather over whatever is playing
@@ -71,6 +72,7 @@ public class Theme {
             t.showForecast = o.optBoolean("showForecast", t.showForecast);
             t.radar = o.optBoolean("radar", t.radar);
             t.iconStyle = o.optString("iconStyle", t.iconStyle);
+            t.appArt = o.optBoolean("appArt", t.appArt);
             t.tileWidthDp = o.optInt("tileWidthDp", t.tileWidthDp);
             t.tileHeightDp = o.optInt("tileHeightDp", t.tileHeightDp);
             t.hourChime = o.optBoolean("hourChime", t.hourChime);
@@ -103,6 +105,7 @@ public class Theme {
             o.put("showForecast", showForecast);
             o.put("radar", radar);
             o.put("iconStyle", iconStyle);
+            o.put("appArt", appArt);
             o.put("tileWidthDp", tileWidthDp);
             o.put("tileHeightDp", tileHeightDp);
             o.put("hourChime", hourChime);

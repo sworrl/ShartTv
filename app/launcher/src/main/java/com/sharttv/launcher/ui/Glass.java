@@ -77,7 +77,9 @@ public class Glass {
                 p.setShader(new LinearGradient(r.left, r.top, r.right, r.bottom,
                         new int[]{e1, glint, e2}, new float[]{0f, 0.5f, 1f}, Shader.TileMode.CLAMP));
                 float inset = p.getStrokeWidth() / 2f;
-                cv.drawRoundRect(new RectF(r.left + inset, r.top + inset, r.right - inset, r.bottom - inset), rad, rad, p);
+                // concentric with the card's edge (same radius on an inset rect bulged into the corners)
+                float ir = Math.max(0f, rad - inset);
+                cv.drawRoundRect(new RectF(r.left + inset, r.top + inset, r.right - inset, r.bottom - inset), ir, ir, p);
                 p.setShader(null);
 
                 // 4) gothic pointed-arch crown: faint apex lines meeting at the top-center

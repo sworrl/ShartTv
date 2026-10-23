@@ -5,8 +5,9 @@ switches off the stock launcher's ads, Samba TV's screen fingerprinting, and Son
 
 It keeps what the Google TV home gets right (apps up front, inputs one click away, a clock that
 pops over whatever's playing at the top of the hour) and drops the sponsored rows. The weather is
-built in: live conditions, a 16-metric dashboard, radar, and a forecast. The whole UI shifts color
-over the 24 hours with the real sun.
+built in, packed edge to edge: live conditions, 20 metrics, our own animated radar, the next 24
+hours, and a six-day forecast. Every app and input card has its own painted art, and the whole UI
+shifts color over the 24 hours with the real sun.
 
 Built for one TV, a Sony BRAVIA 4K VH21 (`BRAVIA_VH21_UC`, Android 12 / Google TV, SDK 31), on a
 locked bootloader. No root, nothing exploited: everything goes through adb on the owner's own set.
@@ -20,11 +21,13 @@ Taken on the TV. The place name and the radar map are blurred.
 | | |
 |---|---|
 | ![Home](docs/screenshots/home.png) | ![Home, app rows](docs/screenshots/home-rows.png) |
-| **Home.** Weather hero beside the Featured strip (pinned and most-used apps), the top bar with the hour clock and the profile avatar, then Recent. | **Rows.** Recent (the app you just left comes first), the inputs with their own art, then every app. |
+| **Home.** The weather card (now, the next 8 hours, 8 metrics, 5 days) beside the Featured strip, the top bar with the hour clock and the profile avatar, then Recent. | **Rows.** Recent (the app you just left comes first), the inputs, then every app. Each card has its own painted scene, captioned with the app's real icon and name. |
 | ![Weather](docs/screenshots/weather.png) | ![Hour chime](docs/screenshots/chime.png) |
-| **Weather.** Current conditions, 16 metrics colored by value, live radar (blurred here), forecast, and the last-updated time. | **Hour chime.** At the top of every hour a glass card rolls the clock over (17:59 → 18:00) above whatever is playing, with the weather now and for the next hour. Playback and audio aren't touched. |
+| **Weather.** Current conditions with moon phase and today's rain and sun times, 20 metrics colored by value, the animated radar (blurred here), the next 24 hours, and six days with range bars, rain chance and wind. | **Hour chime.** At the top of every hour a glass card rolls the clock over (17:59 → 18:00) above whatever is playing, with the weather now and for the next hour. Playback and audio aren't touched. |
 | ![Profiles](docs/screenshots/profiles.png) | ![Appearance](docs/screenshots/settings.png) |
-| **Who's watching?** Household profiles, each with its own theme, recents and learned apps. | **Appearance.** Section cards with their own art down the left, and the controls on the right. Each clock style card is a live clock. |
+| **Who's watching?** Household profiles, each with its own theme, recents and learned apps. | **Appearance.** Section cards with their own art down the left, the controls on the right. The Inputs section lists every port. |
+| ![Name an input](docs/screenshots/input-editor.png) | |
+| **Name an input.** Long-press an input (or open it from Appearance) to call it "Steam Deck", "Mac mini" or anything else, and pick its card from twelve device paintings. | |
 
 The hour clock comes in six animated styles: Split-flap, Odometer, Ember, Nixie, Gothic and
 Classic. Each one tints with the time of day.
@@ -54,8 +57,10 @@ and only changes what isn't already right:
 5. **Configure:** turn on Location (Wi-Fi-based, for the weather), grant permissions, set Shart TV
    as the default launcher, and arm the HOME-redirect service.
 6. **Debloat:** disable Samba TV ACR, the stock launcher's ad and content feeds, telemetry, the
-   voice stack, and the camera-sensing stack, then cut the stock launcher's background data and
-   background execution.
+   voice stack, and the camera-sensing stack.
+7. **Screensaver:** keep the Google Photos screensaver (Ambient) on its factory build. Its October
+   2026 Play update can't get its photo token from the built-in Chromecast service on this TV, so it
+   shows a black screen with only the clock. Pass `--keep-ambient-update` to leave it alone.
 
 Other commands:
 
@@ -98,12 +103,14 @@ launcher is set to. If you disable launcherx, HOME falls through to Sony's setup
 which is worse. So Shart TV leaves it enabled and works around it:
 
 - **HOME redirect.** An accessibility service (`HomeRedirectService`) sees launcherx come up and
-  brings Shart TV to the front. You'll see one frame of the stock launcher. Without root that
-  flicker can't be avoided.
-- **No background activity.** The tool denies launcherx background network and background
-  execution, so its ad and recommendation feeds can't refresh. Android keeps whichever app owns
-  HOME resident in memory: it's exempt from standby buckets and background kills, and adb's
-  shell user isn't allowed to disable its components. So it stays loaded but idle.
+  brings Shart TV to the front. It reacts to launcherx's first drawn frame, so HOME from the Google
+  TV phone app (which also ends the screensaver) lands on Shart TV in about 125 ms. From the remote
+  you may see one frame of the stock launcher; without root that can't be avoided.
+- **Left running on purpose.** Android keeps whichever app owns HOME resident (it's exempt from
+  standby buckets and background kills, and adb's shell user can't disable its components). Cutting
+  its background data and execution would be possible, but the Photos screensaver gets your
+  personal albums through it, and without that it falls back to Google's stock gallery. Its ad
+  feeds are off anyway, since the `launcher` group disables them.
 
 The accessibility service only reads which app is in front, to drive the redirect, the Recent
 row, and the hour chime. It ignores the contents of other apps.
@@ -113,9 +120,18 @@ row, and the hour chime. It ignores the contents of other apps.
 - **Home.** One scrolling page. The weather hero sits beside a Featured strip of your pinned and
   most-used apps. Below come Recent (the app you were just in is focused when you come back),
   the inputs, and all apps. No ads, no sponsored rows, nothing from the stock launcher's feeds.
-- **Bespoke art.** HDMI 1 to 4, composite video, and every Appearance section have their own
-  painted card art in the home's gothic night style. Long input names like
-  "HDMI 3 (eARC/ARC)" become a title plus a small caption, and labels shrink to fit their card.
+- **Bespoke art.** Every installed app, HDMI 1 to 4, composite video, and every Appearance section
+  have their own painted card art in the home's gothic night style. App art carries no logos; the
+  caption shows the app's own icon and name. Long input names like "HDMI 3 (eARC/ARC)" become a
+  title plus a small caption, and labels shrink to fit their card. (Appearance > Home layout
+  switches app cards back to banners or icons.)
+- **Named inputs.** Long-press OK on an input to name what's plugged in and give it a card:
+  Steam Deck, Mac mini, laptop, gaming PC, game console, handheld, streaming stick, cable box,
+  Blu-ray, soundbar, camera or retro console. The port ("HDMI 2") stays as the caption. Names are
+  shared by every profile, since they describe the hardware.
+- **Motion.** Every card, pill and avatar lifts with a little spring on focus, catches a sweep of
+  light, and gets a gold ring. A click presses in, bounces back and blooms with the accent color
+  before the next screen opens.
 - **Live sky.** Home, Weather, Appearance and Profiles all sit over the same animated sky. The
   sun and moon pass behind the glass cards, never over text.
 - **Profiles.** Up to six household profiles from the avatar in the top-right corner. Each has its
@@ -124,7 +140,11 @@ row, and the hour chime. It ignores the contents of other apps.
 - **Weather.** Open-Meteo, keyless. The current conditions are overridden with **ECMWF IFS 0.25°**
   wherever that model has a value (it doesn't report visibility or UV, so those stay on Open-Meteo's
   best-match). It refreshes every 10 minutes while the screen is on, even when another app is in
-  front, and the screen shows when it last updated.
+  front, and the screen shows when it last updated. The hourly curve marks night hours with the
+  moon.
+- **Radar.** Drawn natively, not an embedded web page: RainViewer's last two hours of radar
+  (keyless) crossfading over Esri's dark canvas, tinted to the theme's navy, with a pulsing gold pin
+  for the TV, a time chip, a frame scrubber and a legend.
 - **Location.** In order: a [BeaconFix](https://github.com/sworrl/beaconfix) server on the LAN (a
   configured URL or `_beaconfix._tcp` over mDNS), a manual lat/lon, the TV's own Wi-Fi network
   location, the last cached fix, and an optional fallback from `app/location.properties`.

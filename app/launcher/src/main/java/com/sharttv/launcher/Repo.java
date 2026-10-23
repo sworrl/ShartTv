@@ -58,7 +58,43 @@ public class Repo {
         if (launch == null) launch = pm.getLaunchIntentForPackage(pkg);
         if (launch == null) return;
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
-        out.add(new Tile(Tile.Kind.APP, lab == null ? pkg : lab.toString(), icon, launch, pkg));
+        Tile t = new Tile(Tile.Kind.APP, lab == null ? pkg : lab.toString(), icon, launch, pkg);
+        if (theme.appArt) {
+            t.art = appArt(pkg);
+            if (t.art != 0) try { t.badge = ri.loadIcon(pm); } catch (Exception ignored) {}
+        }
+        out.add(t);
+    }
+
+    /** Bespoke painted card art per app (no logos; the caption carries the app's own icon). */
+    private static int appArt(String pkg) {
+        switch (pkg) {
+            case "com.amazon.amazonvideo.livingroom": return R.drawable.art_app_prime;
+            case "com.android.vending": return R.drawable.art_app_playstore;
+            case "com.apple.atve.sony.appletv": return R.drawable.art_app_appletv;
+            case "com.disney.disneyplus": return R.drawable.art_app_disney;
+            case "com.google.android.play.games": return R.drawable.art_app_playgames;
+            case "com.google.android.youtube.tv": return R.drawable.art_app_youtube;
+            case "com.google.android.youtube.tvmusic": return R.drawable.art_app_ytmusic;
+            case "com.hulu.livingroomplus": return R.drawable.art_app_hulu;
+            case "com.netflix.ninja": return R.drawable.art_app_netflix;
+            case "com.pbs.video": return R.drawable.art_app_pbs;
+            case "com.plexapp.android": return R.drawable.art_app_plex;
+            case "com.sony.dtv.ecodashboard": return R.drawable.art_app_eco;
+            case "com.sony.dtv.livingfit": return R.drawable.art_app_fit;
+            case "com.sony.dtv.notificationcenter": return R.drawable.art_app_notifications;
+            case "com.sony.dtv.osat.music": return R.drawable.art_app_music;
+            case "com.sony.dtv.seeds.iot": return R.drawable.art_app_smarthome;
+            case "com.sony.dtv.smarthelp": return R.drawable.art_app_help;
+            case "com.sony.dtv.smartmediaapp": return R.drawable.art_app_media;
+            case "com.sony.dtv.timers": return R.drawable.art_app_timers;
+            case "com.sony.dtv.tvx": return R.drawable.art_app_livetv;
+            case "com.sonypicturescore": return R.drawable.art_app_core;
+            case "com.spotify.tv.android": return R.drawable.art_app_spotify;
+            case "com.wbd.stream": return R.drawable.art_app_max;
+            case "tv.standard.nebula": return R.drawable.art_app_nebula;
+            default: return 0;
+        }
     }
 
     /** HDMI / external inputs via TvInputManager. Switching uses the public passthrough URI. */
@@ -85,6 +121,13 @@ public class Repo {
                     t.sub = s.toLowerCase(java.util.Locale.US).contains("earc") ? "eARC" : s;
                 }
                 t.art = inputArt(t.label);
+                t.port = t.label + (t.sub.isEmpty() ? "" : " \u00B7 " + t.sub);
+                t.portArt = t.art;
+                // what's plugged in, as the household named it ("Steam Deck" on HDMI 2)
+                String custom = InputNames.name(ctx, info.getId());
+                int presetArt = InputNames.art(InputNames.preset(ctx, info.getId()));
+                if (presetArt != 0) t.art = presetArt;
+                if (!custom.isEmpty()) { t.sub = t.port; t.label = custom; }
                 out.add(t);
             }
         } catch (Exception ignored) {}

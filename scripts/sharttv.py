@@ -11,6 +11,9 @@ what isn't already right:
   4. install it only if the TV has a different build
   5. permissions, location, HOME, and the HOME-redirect accessibility service
   6. disable Samba TV ACR and the stock launcher's ad/content feeds (reversible: `rollback`)
+     and clear any background restriction on launcherx (it breaks the personal-photo screensaver)
+  7. keep the Photos screensaver on its factory build (the Play update from 2026-10 can't get
+     its photo token from Chromecast on this TV, so it shows a black screen with only the clock)
 
 Usage:
   scripts/sharttv.py               discover + deploy + debloat (the default)
@@ -45,6 +48,7 @@ PKG = "com.sharttv.launcher"
 HOME_ACT = f"{PKG}/.LauncherActivity"
 A11Y = f"{PKG}/{PKG}.HomeRedirectService"
 STOCK_HOME = "com.google.android.apps.tv.launcherx"
+AMBIENT = "com.google.android.apps.tv.dreamx"   # the Google Photos screensaver
 STATE = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "sharttv" / "state.json"
 
 # What gets disabled. `pm disable-user` only: nothing is uninstalled, `rollback` undoes it all.
@@ -459,6 +463,26 @@ def a11y_bound(adb):
     return any("Bound services" in l and "Shart TV" in l for l in adb.sh("dumpsys accessibility").splitlines())
 
 
+# ---------------------------------------------------------------- screensaver
+
+def pin_ambient(adb, state):
+    """Ambient 3.3.x asks the Chromecast service for a photo token too early or gets none, and
+    every Google Photos image then fails (black screen, clock only). The factory 2.4.x build
+    works, so roll the Play update back whenever one has been installed."""
+    step("Screensaver")
+    out = adb.sh(f"dumpsys package {AMBIENT}")
+    paths = re.findall(r"codePath=(\S+)", out)
+    if not paths: ok("Ambient screensaver not on this TV"); return
+    if not paths[0].startswith("/data/"):
+        ok("Ambient screensaver is on its factory build")
+        return
+    ver = re.search(r"versionName=(\S+)", out)
+    adb.change(f"am force-stop {AMBIENT}; pm uninstall-system-updates {AMBIENT}",
+               f"roll Ambient {ver.group(1) if ver else ''} back to its factory build (photos fail on the update)")
+    state["ambient_pinned"] = True
+    save_state(state)
+
+
 # ---------------------------------------------------------------- debloat
 
 def disabled_set(adb):
@@ -481,7 +505,12 @@ def debloat(adb, groups, state):
             if pk in off: ok(f"{pk} disabled"); continue
             adb.change(f"am force-stop {pk}; pm disable-user --user 0 {pk}", f"disable {pk}")
             changed.add(pk)
-    starve_launcherx(adb, state)
+    uid = launcherx_uid(adb)
+    if uid and uid in adb.sh("cmd netpolicy list restrict-background-blacklist").split():
+        adb.change(f"cmd netpolicy remove restrict-background-blacklist {uid}", "restore launcherx background data (photos)")
+    for op in ("RUN_ANY_IN_BACKGROUND", "RUN_IN_BACKGROUND"):
+        if "ignore" in adb.sh(f"cmd appops get {STOCK_HOME} {op}"):
+            adb.change(f"cmd appops set {STOCK_HOME} {op} allow", f"restore launcherx {op} (photos)")
     state["disabled"] = sorted(changed)
     save_state(state)
 
@@ -491,22 +520,11 @@ def launcherx_uid(adb):
     return m.group(1) if m else None
 
 
-def starve_launcherx(adb, state):
-    """launcherx has to stay enabled (see NEVER), and Android keeps whatever it routes HOME to
-    resident (the "home process" is exempt from standby buckets and background kills; an app can't
-    end it and the shell can't disable its components). What's left: no background network and no
-    background execution, so its ad/recommendation feeds can't refresh. It sits idle in memory."""
-    say("  [launcherx] stock launcher stays installed, but loses background data and jobs")
-    uid = launcherx_uid(adb)
-    if uid:
-        if uid in adb.sh("cmd netpolicy list restrict-background-blacklist").split():
-            ok("no background data")
-        else:
-            adb.change(f"cmd netpolicy add restrict-background-blacklist {uid}", "block its background data")
-    for op in ("RUN_ANY_IN_BACKGROUND", "RUN_IN_BACKGROUND"):
-        if "ignore" in adb.sh(f"cmd appops get {STOCK_HOME} {op}"): ok(f"{op} denied")
-        else: adb.change(f"cmd appops set {STOCK_HOME} {op} ignore", f"deny {op}")
-    state["launcherx_starved"] = True
+# launcherx is left running normally. Cutting its background data/execution looked harmless, but
+# the Photos screensaver gets the household's personal albums through it: with launcherx starved,
+# Ambient silently falls back to Google's stock gallery. (Android also keeps the HOME app resident
+# no matter what: it's exempt from standby buckets and background kills, and the shell can't
+# disable its components.) rollback() still clears any restriction an older version applied.
 
 
 def rollback(adb, state):
@@ -540,6 +558,8 @@ def status(adb, groups):
     home = re.search(r"\{([^}/]+)/", adb.sh("cmd shortcut get-default-launcher"))
     say(f"  default launcher     {home.group(1) if home else 'unknown'}")
     say(f"  a11y service bound   {a11y_bound(adb)}")
+    amb = re.findall(r"codePath=(\S+)", adb.sh(f"dumpsys package {AMBIENT}"))
+    if amb: say(f"  photos screensaver   {'factory build' if not amb[0].startswith('/data/') else 'Play update (photos may fail)'}")
     off, have_pk = disabled_set(adb), installed_set(adb)
     for g in GROUPS:
         pk = [p for p in GROUPS[g][1] if p in have_pk]
@@ -562,6 +582,8 @@ def main():
                     help=f"debloat groups (default {','.join(DEFAULT_GROUPS)}; all: {','.join(GROUPS)})")
     ap.add_argument("--no-debloat", action="store_true", help="install and configure only")
     ap.add_argument("--dry-run", action="store_true", help="show what would change, change nothing")
+    ap.add_argument("--keep-ambient-update", action="store_true",
+                    help="leave a Play-updated Photos screensaver alone (normally rolled back; see pin_ambient)")
     args = ap.parse_args()
     DRY = args.dry_run
     groups = [g.strip() for g in args.groups.split(",") if g.strip()]
@@ -580,6 +602,7 @@ def main():
     install(adb, apk)
     configure(adb)
     if not args.no_debloat: debloat(adb, groups, state)
+    if not args.keep_ambient_update: pin_ambient(adb, state)
     status(adb, groups)
     say("\nDone. Run it again any time; it only changes what isn't already right.")
 

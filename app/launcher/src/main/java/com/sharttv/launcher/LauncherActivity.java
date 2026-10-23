@@ -22,6 +22,7 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import com.sharttv.launcher.ui.CardFx;
 import com.sharttv.launcher.ui.Fonts;
 import com.sharttv.launcher.ui.Glass;
 import com.sharttv.launcher.ui.Semantic;
@@ -71,6 +72,7 @@ public class LauncherActivity extends Activity {
     // compact weather glance card on the home (full nerd dashboard lives in WeatherActivity)
     private TextView glanceTemp, glanceIcon, glanceCond, glanceHilo, glancePlace;
     private final java.util.LinkedHashMap<String, TextView> miniMetrics = new java.util.LinkedHashMap<>();
+    private com.sharttv.launcher.weather.HourlyChart glanceHourly;
     private LinearLayout miniForecast;
     private int accentNow;
 
@@ -85,7 +87,7 @@ public class LauncherActivity extends Activity {
     private String themeSig(Theme t) {
         return Profiles.currentId(this) + "|" + t.bgColor + "|" + t.accentColor + "|" + t.surfaceColor + "|" + t.textColor + "|" + t.textDimColor
                 + "|" + t.tileWidthDp + "|" + t.tileHeightDp + "|" + t.cornerRadiusDp + "|" + t.listStyle
-                + "|" + t.iconStyle + "|" + t.weather + "|" + t.radar + "|" + t.showForecast + "|" + t.showMostUsed
+                + "|" + t.iconStyle + "|" + t.appArt + "|" + t.weather + "|" + t.radar + "|" + t.showForecast + "|" + t.showMostUsed
                 + "|" + t.autoPromote + "|" + t.focusScale + "|" + t.clockStyle + "|" + t.clockFormat + "|" + (t.bgImagePath == null ? "" : t.bgImagePath);
     }
 
@@ -127,8 +129,12 @@ public class LauncherActivity extends Activity {
         buildUi();
     }
 
+    /** True while the home is resumed; the HOME redirect ignores launcherx redraws behind us. */
+    static volatile boolean inFront;
+
     @Override protected void onResume() {
         super.onResume();
+        inFront = true;
         usage = new UsageStore(this);   // the profile may have changed
         Theme nt = Theme.load(this);
         String sig = themeSig(nt);
@@ -160,6 +166,7 @@ public class LauncherActivity extends Activity {
 
     @Override protected void onPause() {
         super.onPause();
+        inFront = false;
         sky.removeCallbacks(skyTick);
         if (engine != null) engine.stop();
         if (weatherView != null) weatherView.stopAnim();
@@ -349,8 +356,10 @@ public class LauncherActivity extends Activity {
             pill.setOnFocusChangeListener((v, has) -> {
                 v.setBackground(Glass.card(theme.surfaceColor, accentNow, has, pr));
                 pill.setTextColor(has ? accentNow : theme.textColor);
+                CardFx.focus(v, has, 1.08f, pr, accentNow, theme.focusAnimMs);
             });
-            pill.setOnClickListener(v -> { try { startActivity(s.launch); } catch (Exception ignored) {} });
+            pill.setOnClickListener(v -> CardFx.click(v, pr, accentNow,
+                    () -> { try { startActivity(s.launch); } catch (Exception ignored) {} }));
             LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             plp.setMarginStart(dp(10));
@@ -369,9 +378,10 @@ public class LauncherActivity extends Activity {
         av.setBackground(avatarBg(prof.color, false));
         av.setOnFocusChangeListener((v, has) -> {
             v.setBackground(avatarBg(prof.color, has));
-            v.animate().scaleX(has ? 1.15f : 1f).scaleY(has ? 1.15f : 1f).setDuration(theme.focusAnimMs).start();
+            CardFx.focus(v, has, 1.18f, dp(14), accentNow, theme.focusAnimMs);
         });
-        av.setOnClickListener(v -> { try { startActivity(new Intent(this, ProfilesActivity.class)); } catch (Exception ignored) {} });
+        av.setOnClickListener(v -> CardFx.click(v, dp(14), accentNow,
+                () -> { try { startActivity(new Intent(this, ProfilesActivity.class)); } catch (Exception ignored) {} }));
         LinearLayout.LayoutParams alp = new LinearLayout.LayoutParams(dp(28), dp(28));
         alp.setMarginStart(dp(12));
         bar.addView(av, alp);
@@ -426,15 +436,13 @@ public class LauncherActivity extends Activity {
         wrap.setBackground(Glass.card(theme.surfaceColor, theme.accentColor, false, rad));
         Glass.clipRound(wrap, rad);
         if (curWx != null && curWx.valid())
-            wrap.setForeground(new WeatherSkin(curWx.category, curWx.intensity, curWx.isFreezing(), Glass.D));
+            wrap.setForeground(new WeatherSkin(curWx.category, curWx.intensity, curWx.isFreezing(), Glass.D).radius(rad));
         wrap.setFocusable(true);
-        wrap.setOnClickListener(v -> { try { startActivity(new Intent(this, WeatherActivity.class)); } catch (Exception ignored) {} });
+        wrap.setOnClickListener(v -> CardFx.click(v, rad, accentNow,
+                () -> { try { startActivity(new Intent(this, WeatherActivity.class)); } catch (Exception ignored) {} }));
         wrap.setOnFocusChangeListener((v, has) -> {
             v.setBackground(Glass.card(theme.surfaceColor, accentNow, has, rad));
-            if (theme.focusScale) {
-                v.animate().scaleX(has ? 1.02f : 1f).scaleY(has ? 1.02f : 1f).setDuration(theme.focusAnimMs).start();
-                v.setElevation(has ? dp(8) : 0);
-            }
+            CardFx.focus(v, has, theme.focusScale ? 1.02f : 1f, rad, accentNow, theme.focusAnimMs);
         });
 
         LinearLayout col = new LinearLayout(this);
@@ -463,6 +471,7 @@ public class LauncherActivity extends Activity {
         glanceCond.setTextColor(theme.accentColor);
         glanceCond.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17);
         glanceCond.setSingleLine(true); glanceCond.setEllipsize(TextUtils.TruncateAt.END);
+        glanceCond.setAutoSizeTextTypeUniformWithConfiguration(11, 17, 1, TypedValue.COMPLEX_UNIT_SP);
         glanceHilo = new TextView(this);
         glanceHilo.setTypeface(Fonts.body);
         glanceHilo.setTextColor(theme.textColor);
@@ -471,23 +480,24 @@ public class LauncherActivity extends Activity {
         glancePlace.setTypeface(Fonts.body);
         glancePlace.setTextColor(theme.textDimColor);
         glancePlace.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        glancePlace.setSingleLine(true); glancePlace.setEllipsize(TextUtils.TruncateAt.END);
+        glancePlace.setMaxLines(2); glancePlace.setEllipsize(TextUtils.TruncateAt.END);   // keeps "Updated" visible
         mid.addView(glanceCond); mid.addView(glanceHilo); mid.addView(glancePlace);
         top.addView(mid, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        TextView go = new TextView(this);
-        go.setTypeface(Fonts.body);
-        go.setTextColor(theme.accentColor2);
-        go.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
-        go.setLetterSpacing(0.08f);
-        go.setText("RADAR ▸");
-        top.addView(go);
+        // the next 8 hours fill the card's right side (the whole card opens the full Weather screen)
+        glanceHourly = new com.sharttv.launcher.weather.HourlyChart(this);
+        glanceHourly.setHours(8);
+        glanceHourly.setFonts(Fonts.display, Fonts.body);
+        glanceHourly.setColors(theme.textColor, theme.textDimColor, theme.accentColor);
+        LinearLayout.LayoutParams ghl = new LinearLayout.LayoutParams(dp(172), dp(66));
+        ghl.setMarginStart(dp(6));
+        top.addView(glanceHourly, ghl);
         col.addView(top);
 
         // row 2: six semantic-colored metrics
         LinearLayout mx = new LinearLayout(this);
         mx.setOrientation(LinearLayout.HORIZONTAL);
         miniMetrics.clear();
-        for (String k : new String[]{"FEELS", "WIND", "HUMID", "UV", "PRECIP", "AQI"}) miniMetrics.put(k, miniMetric(mx, k));
+        for (String k : new String[]{"FEELS", "WIND", "GUST", "HUMID", "DEW", "UV", "PRECIP", "AQI"}) miniMetrics.put(k, miniMetric(mx, k));
         LinearLayout.LayoutParams mxlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         mxlp.topMargin = dp(6);
         col.addView(mx, mxlp);
@@ -569,6 +579,11 @@ public class LauncherActivity extends Activity {
         mm("FEELS", f(curWx.feelsC) + "°", Semantic.temp(f(curWx.feelsC)));
         int wmph = (int) Math.round(curWx.windKmh * 0.621);
         mm("WIND", compass(curWx.windDirDeg) + " " + wmph, Semantic.wind(wmph));
+        if (Double.isNaN(curWx.windGust)) mm("GUST", "—", theme.textColor);
+        else { int g = (int) Math.round(curWx.windGust * 0.621); mm("GUST", String.valueOf(g), Semantic.wind(g)); }
+        mm("DEW", Double.isNaN(curWx.dewC) ? "—" : f(curWx.dewC) + "°",
+                Double.isNaN(curWx.dewC) ? theme.textColor : Semantic.dew(f(curWx.dewC)));
+        if (glanceHourly != null) glanceHourly.setWeather(curWx);
         mm("HUMID", curWx.humidity > 0 ? curWx.humidity + "%" : "—",
                 curWx.humidity > 0 ? Semantic.humidity(curWx.humidity) : theme.textColor);
         mm("UV", Double.isNaN(curWx.uvIndex) ? "—" : String.valueOf((int) Math.round(curWx.uvIndex)),
@@ -586,6 +601,7 @@ public class LauncherActivity extends Activity {
                     TextView c = new TextView(this);
                     c.setTypeface(Fonts.body);
                     c.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+                    c.setAutoSizeTextTypeUniformWithConfiguration(8, 12, 1, TypedValue.COMPLEX_UNIT_SP);
                     c.setGravity(Gravity.CENTER);
                     c.setSingleLine(true);
                     android.text.SpannableStringBuilder sb = new android.text.SpannableStringBuilder();
@@ -598,7 +614,7 @@ public class LauncherActivity extends Activity {
                             Double.isNaN(curWx.fcMin[i]) ? theme.textColor : Semantic.temp(f(curWx.fcMin[i])));
                     c.setTextColor(theme.textDimColor);
                     c.setText(sb);
-                    miniForecast.addView(c, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+                    miniForecast.addView(c, new LinearLayout.LayoutParams(0, dp(18), 1f));
                 }
             }
         }
@@ -767,6 +783,8 @@ public class LauncherActivity extends Activity {
             r.setLayoutManager(new LinearLayoutManager(ctx, RecyclerView.HORIZONTAL, false));
         }
         r.setClipToPadding(false);
+        r.setClipChildren(false);
+        colv.setClipChildren(false);
         r.setPadding(0, 0, 0, dp(2));
         colv.addView(r, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -781,9 +799,10 @@ public class LauncherActivity extends Activity {
 
         class VH extends RecyclerView.ViewHolder {
             FrameLayout card; ImageView img; TextView glyph; TextView label;
-            LinearLayout cap; TextView capTitle, capSub;
-            VH(View v, FrameLayout c, ImageView i, TextView g, TextView l, LinearLayout cp, TextView ct, TextView cs) {
-                super(v); card = c; img = i; glyph = g; label = l; cap = cp; capTitle = ct; capSub = cs;
+            LinearLayout cap; TextView capTitle, capSub; ImageView capBadge;
+            android.graphics.drawable.Drawable skin;
+            VH(View v, FrameLayout c, ImageView i, TextView g, TextView l, LinearLayout cp, TextView ct, TextView cs, ImageView cb) {
+                super(v); card = c; img = i; glyph = g; label = l; cap = cp; capTitle = ct; capSub = cs; capBadge = cb;
             }
         }
 
@@ -791,19 +810,21 @@ public class LauncherActivity extends Activity {
             Context c = p.getContext();
             LinearLayout wrap = new LinearLayout(c);
             wrap.setOrientation(LinearLayout.VERTICAL);
+            wrap.setClipChildren(false);   // a focused card scales past this wrapper
             int w = dp(wDp);
             RecyclerView.LayoutParams wlp = new RecyclerView.LayoutParams(w, ViewGroup.LayoutParams.WRAP_CONTENT);
             wlp.setMargins(dp(7), dp(6), dp(7), dp(6));
             wrap.setLayoutParams(wlp);
 
-            FrameLayout card = new FrameLayout(c);
+            com.sharttv.launcher.ui.CardFrame card = new com.sharttv.launcher.ui.CardFrame(c);
             card.setLayoutParams(new LinearLayout.LayoutParams(w, dp(hDp)));
             float rad = dp(theme.cornerRadiusDp);
             card.setBackground(Glass.card(theme.surfaceColor, accentNow, false, rad));
-            Glass.clipRound(card, rad);
+            card.setRadius(rad);   // rounds itself; outline clipping drops out on focused cards here
             card.setTag(WeatherView.OCCLUDE);
             card.setFocusable(true);
             card.setFocusableInTouchMode(true);
+            card.setDefaultFocusHighlightEnabled(false);   // its square highlight showed in the rounded corners
 
             ImageView img = new ImageView(c);
             img.setScaleType(ImageView.ScaleType.CENTER_CROP);
@@ -861,13 +882,23 @@ public class LauncherActivity extends Activity {
             capSub.setLetterSpacing(0.16f);
             capSub.setSingleLine(true);
             capSub.setShadowLayer(dp(4), 0, dp(1), 0xCC000000);
-            cap.addView(capTitle);
+            LinearLayout titleRow = new LinearLayout(c);
+            titleRow.setOrientation(LinearLayout.HORIZONTAL);
+            titleRow.setGravity(Gravity.CENTER_VERTICAL);
+            ImageView capBadge = new ImageView(c);
+            capBadge.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            Glass.clipRound(capBadge, dp(4));
+            LinearLayout.LayoutParams blp = new LinearLayout.LayoutParams(dp(18), dp(18));
+            blp.setMarginEnd(dp(7));
+            titleRow.addView(capBadge, blp);
+            titleRow.addView(capTitle, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            cap.addView(titleRow);
             cap.addView(capSub);
             card.addView(cap, new FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
             wrap.addView(card);
-            return new VH(wrap, card, img, glyph, label, cap, capTitle, capSub);
+            return new VH(wrap, card, img, glyph, label, cap, capTitle, capSub, capBadge);
         }
 
         @Override public void onBindViewHolder(@NonNull VH vh, int pos) {
@@ -882,6 +913,8 @@ public class LauncherActivity extends Activity {
                 vh.capSub.setText(t.sub.toUpperCase(java.util.Locale.US));
                 vh.capSub.setTextColor(accentNow);
                 vh.capSub.setVisibility(t.sub.isEmpty() ? View.GONE : View.VISIBLE);
+                vh.capBadge.setImageDrawable(t.badge);
+                vh.capBadge.setVisibility(t.badge != null ? View.VISIBLE : View.GONE);
             } else if (t.kind == Tile.Kind.APP && t.icon != null) {
                 vh.img.setImageDrawable(t.icon);
                 vh.glyph.setText("");
@@ -889,28 +922,41 @@ public class LauncherActivity extends Activity {
                 vh.img.setImageDrawable(null);
                 vh.glyph.setText(t.label);   // gothic centered label for inputs/settings
             }
-            vh.card.setBackground(Glass.card(theme.surfaceColor, accentNow, false, rad));
+            final boolean fullBleed = t.art != 0 || (t.kind == Tile.Kind.APP && t.icon != null);
+            // full-bleed cards have no glass behind them (nothing would show but its corners)
+            vh.card.setBackground(fullBleed ? null : Glass.card(theme.surfaceColor, accentNow, false, rad));
             // organic weather treatment baked into every card (frost/rain/warm glow), kept subtle
-            if (theme.weather && curWx != null && curWx.valid())
-                vh.card.setForeground(new WeatherSkin(curWx.category, curWx.intensity, curWx.isFreezing(), Glass.D));
-            else
-                vh.card.setForeground(null);
-            vh.card.setOnClickListener(v -> {
+            vh.skin = theme.weather && curWx != null && curWx.valid()
+                    ? new WeatherSkin(curWx.category, curWx.intensity, curWx.isFreezing(), Glass.D).radius(rad) : null;
+            vh.card.setForeground(vh.skin);
+            ((com.sharttv.launcher.ui.CardFrame) vh.card).setRing(vh.card.isFocused(), accentNow);
+            vh.card.setOnClickListener(v -> CardFx.click(v, rad, accentNow, () -> {
                 try {
                     usage.record(usageKey(t));   // learn what gets used
                     if (t.launch != null) startActivity(t.launch);
                 } catch (Exception ignored) {}
-            });
+            }));
+            if (t.kind == Tile.Kind.INPUT) {
+                // long-press OK: name this input and pick its card ("Steam Deck", "Mac mini", ...)
+                vh.card.setOnLongClickListener(v -> {
+                    try {
+                        backFromOwnScreen = true;
+                        startActivity(new Intent(LauncherActivity.this, InputEditActivity.class)
+                                .putExtra(InputEditActivity.EXTRA_ID, t.key)
+                                .putExtra(InputEditActivity.EXTRA_PORT, t.port)
+                                .putExtra(InputEditActivity.EXTRA_PORT_ART, t.portArt));
+                    } catch (Exception ignored) {}
+                    return true;
+                });
+            } else vh.card.setOnLongClickListener(null);
             vh.card.setOnFocusChangeListener((v, has) -> {
                 int ring = (theme.weather && curWx != null && curWx.isFreezing())
                         ? Color.parseColor("#9FE8FF") : accentNow;
-                v.setBackground(Glass.card(theme.surfaceColor, ring, has, rad));
-                if (theme.focusScale) {
-                    float scv = has ? theme.focusScaleAmount : 1f;
-                    v.animate().scaleX(scv).scaleY(scv).setDuration(theme.focusAnimMs).start();
-                    v.setElevation(has ? dp(10) : 0);
-                }
-                boolean showName = t.kind == Tile.Kind.APP;   // inputs already show their name
+                if (!fullBleed) v.setBackground(Glass.card(theme.surfaceColor, ring, has, rad));
+                // the ring sits ABOVE the art (the background one is hidden under full-bleed images)
+                ((com.sharttv.launcher.ui.CardFrame) v).setRing(has, ring);
+                CardFx.focus(v, has, theme.focusScale ? theme.focusScaleAmount : 1f, rad, ring, theme.focusAnimMs);
+                boolean showName = t.kind == Tile.Kind.APP && t.art == 0;   // art cards carry a caption
                 vh.label.animate().alpha(has && showName ? 1f : 0f).setDuration(theme.focusAnimMs).start();
             });
         }

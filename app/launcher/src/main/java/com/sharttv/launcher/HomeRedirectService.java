@@ -79,10 +79,17 @@ public class HomeRedirectService extends AccessibilityService {
     }
 
     @Override public void onAccessibilityEvent(AccessibilityEvent e) {
-        if (e == null || e.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
+        if (e == null) return;
         CharSequence cs = e.getPackageName();
         if (cs == null) return;
         String pkg = cs.toString();
+        if (e.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            // launcherx drawing while we're not in front = HOME was pressed (the state-changed event
+            // can lag ~1.5 s behind, e.g. when HOME from the phone app also ends the screensaver)
+            if (STOCK.equals(pkg) && !LauncherActivity.inFront) redirect();
+            return;
+        }
+        if (e.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return;
         if (pkg.equals(getPackageName())) {
             if (chime != null) chime.homeInFront = LauncherActivity.class.getName().contentEquals(
                     e.getClassName() == null ? "" : e.getClassName());
@@ -95,6 +102,10 @@ public class HomeRedirectService extends AccessibilityService {
             }
             return;
         }
+        redirect();
+    }
+
+    private void redirect() {
         long now = SystemClock.uptimeMillis();
         if (now - lastRedirect < 800) return;   // debounce launcherx's own transition churn
         lastRedirect = now;

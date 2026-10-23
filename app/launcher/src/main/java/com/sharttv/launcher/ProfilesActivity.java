@@ -13,6 +13,7 @@ import android.view.ViewGroup;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import com.sharttv.launcher.ui.CardFx;
 import com.sharttv.launcher.ui.Fonts;
 import com.sharttv.launcher.ui.Glass;
 import java.util.List;
@@ -99,10 +100,10 @@ public class ProfilesActivity extends Activity {
         List<Profiles.Profile> all = Profiles.all(this);
         for (final Profiles.Profile p : all) {
             View av = avatar(p.initial(), p.name, p.color, p.id.equals(curId));
-            av.setOnClickListener(v -> { Profiles.switchTo(this, p.id); finish(); });
+            av.setOnClickListener(v -> CardFx.click(v, dp(60), p.color, () -> { Profiles.switchTo(this, p.id); finish(); }));
             av.setOnFocusChangeListener((v, has) -> {
                 if (has) selectedId = p.id;
-                v.animate().scaleX(has ? 1.12f : 1f).scaleY(has ? 1.12f : 1f).setDuration(theme.focusAnimMs).start();
+                CardFx.focus(v, has, 1.12f, dp(60), theme.accentColor, theme.focusAnimMs);
             });
             row.addView(av);
             if (p.id.equals(selectedId)) focusMe = av;
@@ -113,8 +114,7 @@ public class ProfilesActivity extends Activity {
                 Profiles.switchTo(this, Profiles.add(this, name));
                 finish();
             }));
-            add.setOnFocusChangeListener((v, has) ->
-                    v.animate().scaleX(has ? 1.12f : 1f).scaleY(has ? 1.12f : 1f).setDuration(theme.focusAnimMs).start());
+            add.setOnFocusChangeListener((v, has) -> CardFx.focus(v, has, 1.12f, dp(60), theme.accentColor, theme.focusAnimMs));
             row.addView(add);
         }
         col.addView(row);
@@ -203,8 +203,9 @@ public class ProfilesActivity extends Activity {
         pill.setOnFocusChangeListener((v, has) -> {
             v.setBackground(Glass.card(theme.surfaceColor, theme.accentColor, has, pr));
             pill.setTextColor(has ? theme.accentColor : theme.textColor);
+            CardFx.focus(v, has, 1.08f, pr, theme.accentColor, theme.focusAnimMs);
         });
-        pill.setOnClickListener(onClick);
+        pill.setOnClickListener(v -> CardFx.click(v, pr, theme.accentColor, () -> onClick.onClick(v)));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.setMargins(dp(8), 0, dp(8), 0);

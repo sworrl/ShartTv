@@ -62,6 +62,8 @@ public class Wx {
     public String[] fcDay;   // "Fri","Sat",...
     public int[] fcCode;     // WMO code per day
     public double[] fcMax, fcMin;
+    public int[] fcPop;          // max precipitation chance per day, -1 unknown
+    public double[] fcWindKmh;   // max wind per day
 
     // Hourly forecast from the current hour on (epoch ms of each hour; may be null).
     public long[] hrAt;

@@ -24,7 +24,7 @@ import java.util.Locale;
 /**
  * The full "WEATHER NERD LEVEL" dashboard, on its own screen. The home launcher shows only a compact
  * glance card; opening it lands here: animated weather backdrop, big current conditions, a 16-metric
- * grid, a large Windy radar, and the multi-day forecast — every value semantically colored. Fits
+ * grid, our own animated radar, and the multi-day forecast — every value semantically colored. Fits
  * the panel exactly; nothing scrolls.
  */
 public class WeatherActivity extends Activity {
@@ -34,16 +34,19 @@ public class WeatherActivity extends Activity {
     private WeatherEngine engine;
     private Wx curWx;
     private Loc curLoc;
-    private android.webkit.WebView radar;
-    private double radarLat = Double.NaN, radarLon = Double.NaN;
+    private com.sharttv.launcher.weather.RadarView radar;
 
     private TextView bigTemp, bigCond, bigPlace, bigHilo, clock;
     private LinearLayout forecastStrip;
     private final java.util.LinkedHashMap<String, TextView> metricViews = new java.util.LinkedHashMap<>();
     private static final String[] METRIC_KEYS = {
-        "Feels","Dew Pt","Humidity","Pressure","Wind","Gust","UV","UV Max",
-        "Visibility","Cloud L/M/H","CAPE","Precip %","AQI","PM2.5","Sunrise","Sunset"
+        "Feels","Dew Pt","Humidity","Pressure","Sfc Press",
+        "Wind","Gust","UV","UV Max","Visibility",
+        "Cloud","Cloud L/M/H","CAPE","Precip %","Rain Now",
+        "AQI","PM2.5","Sunrise","Sunset","Daylight"
     };
+    private TextView moonLine, todayLine;
+    private com.sharttv.launcher.weather.HourlyChart hourly;
 
     private final android.os.Handler sky = new android.os.Handler();
     private final Runnable skyTick = new Runnable() {
@@ -81,6 +84,7 @@ public class WeatherActivity extends Activity {
         }
         engine.start();
         if (weatherView != null) weatherView.startAnim();
+        if (radar != null) radar.start();
         sky.removeCallbacks(skyTick); sky.post(skyTick);
     }
 
@@ -89,6 +93,7 @@ public class WeatherActivity extends Activity {
         sky.removeCallbacks(skyTick);
         if (engine != null) engine.stop();
         if (weatherView != null) weatherView.stopAnim();
+        if (radar != null) radar.stop();
     }
 
     /**
@@ -173,9 +178,26 @@ public class WeatherActivity extends Activity {
         bigPlace.setTypeface(Fonts.body);
         bigPlace.setTextColor(theme.textDimColor);
         bigPlace.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
-        bigPlace.setSingleLine(true); bigPlace.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        bigPlace.setMaxLines(2); bigPlace.setEllipsize(android.text.TextUtils.TruncateAt.END);
         curc.addView(bigCond); curc.addView(bigHilo); curc.addView(bigPlace);
         cc.addView(curc, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        // right edge of the card: moon + today's rain/daylight
+        LinearLayout side = new LinearLayout(this);
+        side.setOrientation(LinearLayout.VERTICAL);
+        side.setGravity(Gravity.END);
+        moonLine = new TextView(this);
+        moonLine.setTypeface(Fonts.body, Typeface.BOLD);
+        moonLine.setTextColor(theme.textColor);
+        moonLine.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        moonLine.setGravity(Gravity.END);
+        todayLine = new TextView(this);
+        todayLine.setTypeface(Fonts.body);
+        todayLine.setTextColor(theme.textDimColor);
+        todayLine.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        todayLine.setGravity(Gravity.END);
+        todayLine.setLineSpacing(0, 1.1f);
+        side.addView(moonLine); side.addView(todayLine);
+        cc.addView(side);
         card.addView(cc, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         left.addView(card, new LinearLayout.LayoutParams(
@@ -190,7 +212,7 @@ public class WeatherActivity extends Activity {
         grid.setOrientation(LinearLayout.VERTICAL);
         grid.setPadding(dp(14), dp(8), dp(14), dp(8));
         metricViews.clear();
-        int cols = 4;
+        int cols = 5;
         for (int base = 0; base < METRIC_KEYS.length; base += cols) {
             LinearLayout mrow = new LinearLayout(this);
             mrow.setOrientation(LinearLayout.HORIZONTAL);
@@ -233,19 +255,33 @@ public class WeatherActivity extends Activity {
         Glass.clipRound(radarWrap, dp(20));
         radarWrap.setBackground(Glass.card(theme.surfaceColor, theme.accentColor, false, dp(20)));
         radarWrap.setTag(WeatherView.OCCLUDE);
+        LinearLayout right = new LinearLayout(this);
+        right.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams rlp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f);
         rlp.setMarginStart(dp(12));
-        body.addView(radarWrap, rlp);
-        sky.post(() -> {
-            if (isFinishing()) return;
-            radar = new android.webkit.WebView(this);
-            android.webkit.WebSettings ws = radar.getSettings();
-            ws.setJavaScriptEnabled(true); ws.setDomStorageEnabled(true);
-            radar.setBackgroundColor(Color.TRANSPARENT);
-            radarWrap.addView(radar, new FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-            updateRadar();
-        });
+        body.addView(right, rlp);
+        right.addView(radarWrap, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        // next 24 hours under the radar
+        FrameLayout hcard = new FrameLayout(this);
+        hcard.setBackground(Glass.card(theme.surfaceColor, theme.accentColor2, false, dp(20)));
+        Glass.clipRound(hcard, dp(20));
+        hcard.setTag(WeatherView.OCCLUDE);
+        hcard.setPadding(dp(8), dp(6), dp(8), dp(4));
+        hourly = new com.sharttv.launcher.weather.HourlyChart(this);
+        hourly.setHours(24);
+        hourly.setFonts(Fonts.display, Fonts.body);
+        hourly.setColors(theme.textColor, theme.textDimColor, theme.accentColor);
+        hcard.addView(hourly, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(118));
+        hlp.topMargin = dp(10);
+        right.addView(hcard, hlp);
+        radar = new com.sharttv.launcher.weather.RadarView(this);
+        radar.setPalette(theme.textColor, theme.surfaceColor, theme.accentColor);
+        radar.setFonts(Fonts.display, Fonts.body);
+        radarWrap.addView(radar, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        radar.start();
+        updateRadar();
 
         // forecast strip along the bottom
         FrameLayout fcard = new FrameLayout(this);
@@ -284,6 +320,24 @@ public class WeatherActivity extends Activity {
         bigPlace.setText(WeatherEngine.placeLine(this, curWx, curLoc));
 
         setMC("Feels", f(curWx.feelsC) + "°", Semantic.temp(f(curWx.feelsC)));
+        setMC("Sfc Press", Double.isNaN(curWx.surfacePressureHpa) ? "—" : String.format(Locale.US, "%.2f\"", curWx.surfacePressureHpa * 0.02953),
+                Double.isNaN(curWx.surfacePressureHpa) ? theme.textColor : Semantic.neutral());
+        setMC("Cloud", Math.round(curWx.cloudPct) + "%", Semantic.cloud(curWx.cloudPct));
+        double inNow = curWx.precipMm / 25.4;
+        setMC("Rain Now", inNow <= 0 ? "0\"" : String.format(Locale.US, "%.2f\"", inNow), Semantic.precip(Math.min(100, inNow * 400)));
+        if (curWx.sunriseSec >= 0 && curWx.sunsetSec > curWx.sunriseSec) {
+            int dl = (curWx.sunsetSec - curWx.sunriseSec) / 60;
+            setMC("Daylight", (dl / 60) + "h " + (dl % 60) + "m", Semantic.sun());
+        } else setMC("Daylight", "—", theme.textColor);
+        if (moonLine != null) {
+            double[] mp = moonPhase(System.currentTimeMillis());
+            moonLine.setText(MOON_GLYPH[(int) mp[0]] + "  " + MOON_NAME[(int) mp[0]] + "  " + Math.round(mp[1] * 100) + "%");
+            StringBuilder tb = new StringBuilder();
+            if (!Double.isNaN(curWx.precipProb)) tb.append("\u2602 ").append((int) curWx.precipProb).append("% rain today");
+            if (curWx.sunriseSec >= 0) tb.append(tb.length() > 0 ? "\n" : "").append("\u2600 ").append(hm(curWx.sunriseSec)).append(" \u2192 ").append(hm(curWx.sunsetSec));
+            todayLine.setText(tb);
+        }
+        if (hourly != null) hourly.setWeather(curWx);
         setMC("Dew Pt", Double.isNaN(curWx.dewC) ? "—" : f(curWx.dewC) + "°", Double.isNaN(curWx.dewC) ? theme.textColor : Semantic.dew(f(curWx.dewC)));
         setMC("Humidity", curWx.humidity > 0 ? curWx.humidity + "%" : "—", curWx.humidity > 0 ? Semantic.humidity(curWx.humidity) : theme.textColor);
         setMC("Pressure", Double.isNaN(curWx.pressureHpa) ? "—" : Math.round(curWx.pressureHpa) + " hPa", Double.isNaN(curWx.pressureHpa) ? theme.textColor : Semantic.pressure(curWx.pressureHpa));
@@ -311,43 +365,98 @@ public class WeatherActivity extends Activity {
 
     private void updateRadar() {
         if (radar == null || curLoc == null) return;
-        if (!Double.isNaN(radarLat) && Math.abs(radarLat - curLoc.lat) < 0.05 && Math.abs(radarLon - curLoc.lon) < 0.05) return;
-        radarLat = curLoc.lat; radarLon = curLoc.lon;
-        String url = "https://embed.windy.com/embed2.html?lat=" + curLoc.lat + "&lon=" + curLoc.lon
-                + "&detailLat=" + curLoc.lat + "&detailLon=" + curLoc.lon
-                + "&zoom=7&level=surface&overlay=radar&product=radar&menu=&message=true&marker=true"
-                + "&calendar=&pressure=&type=map&location=coordinates&detail=&metricWind=mph&metricTemp=%C2%B0F&radarRange=-1";
-        radar.loadUrl(url);
+        radar.setLocation(curLoc.lat, curLoc.lon);
     }
 
+    private static final String[] MOON_GLYPH = {"\uD83C\uDF11","\uD83C\uDF12","\uD83C\uDF13","\uD83C\uDF14","\uD83C\uDF15","\uD83C\uDF16","\uD83C\uDF17","\uD83C\uDF18"};
+    private static final String[] MOON_NAME = {"New moon","Waxing crescent","First quarter","Waxing gibbous","Full moon","Waning gibbous","Last quarter","Waning crescent"};
+
+    /** {phase index 0..7, illuminated fraction 0..1} from the mean synodic month. */
+    private static double[] moonPhase(long ms) {
+        double days = (ms - 947182440000L) / 86400000.0;   // since the new moon of 2000-01-06 18:14 UTC
+        double ph = ((days % 29.530588853) + 29.530588853) % 29.530588853 / 29.530588853;
+        return new double[]{(int) Math.floor(ph * 8 + 0.5) % 8, (1 - Math.cos(2 * Math.PI * ph)) / 2};
+    }
+
+    /** Six days: name, icon, high/low with a range bar against the week's spread, rain chance, wind. */
     private void buildForecast() {
         if (forecastStrip == null) return;
         forecastStrip.removeAllViews();
         if (curWx == null || curWx.fcDay == null) return;
+        double wlo = Double.MAX_VALUE, whi = -Double.MAX_VALUE;
+        for (int i = 0; i < curWx.fcDay.length; i++) {
+            if (!Double.isNaN(curWx.fcMin[i])) wlo = Math.min(wlo, curWx.fcMin[i]);
+            if (!Double.isNaN(curWx.fcMax[i])) whi = Math.max(whi, curWx.fcMax[i]);
+        }
         for (int i = 0; i < curWx.fcDay.length; i++) {
             LinearLayout cell = new LinearLayout(this);
-            cell.setOrientation(LinearLayout.VERTICAL);
-            cell.setGravity(Gravity.CENTER);
-            cell.setPadding(dp(10), dp(2), dp(10), dp(2));
+            cell.setOrientation(LinearLayout.HORIZONTAL);
+            cell.setGravity(Gravity.CENTER_VERTICAL);
+            cell.setPadding(dp(6), dp(2), dp(6), dp(2));
+            TextView g = new TextView(this);
+            g.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+            g.setText(Wx.glyph(curWx.fcCode[i]));
+            g.setPadding(0, 0, dp(6), 0);
+            cell.addView(g);
+            LinearLayout info = new LinearLayout(this);
+            info.setOrientation(LinearLayout.VERTICAL);
             TextView day = new TextView(this);
             day.setTypeface(Fonts.display, Typeface.BOLD);
             day.setTextColor(theme.textColor);
-            day.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-            day.setGravity(Gravity.CENTER);
+            day.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
             day.setText(curWx.fcDay[i].toUpperCase(Locale.getDefault()));
-            TextView g = new TextView(this);
-            g.setTextSize(TypedValue.COMPLEX_UNIT_SP, 20);
-            g.setGravity(Gravity.CENTER);
-            g.setText(Wx.glyph(curWx.fcCode[i]));
-            LinearLayout hl = new LinearLayout(this); hl.setOrientation(LinearLayout.HORIZONTAL); hl.setGravity(Gravity.CENTER);
-            TextView hiT = new TextView(this); hiT.setTypeface(Fonts.body, Typeface.BOLD); hiT.setTextSize(TypedValue.COMPLEX_UNIT_SP,15);
-            TextView loT = new TextView(this); loT.setTypeface(Fonts.body); loT.setTextSize(TypedValue.COMPLEX_UNIT_SP,15);
-            TextView sl = new TextView(this); sl.setText(" / "); sl.setTextColor(theme.textDimColor); sl.setTextSize(TypedValue.COMPLEX_UNIT_SP,14);
-            if (!Double.isNaN(curWx.fcMax[i])) { hiT.setText(f(curWx.fcMax[i]) + "°"); hiT.setTextColor(Semantic.temp(f(curWx.fcMax[i]))); }
-            if (!Double.isNaN(curWx.fcMin[i])) { loT.setText(f(curWx.fcMin[i]) + "°"); loT.setTextColor(Semantic.temp(f(curWx.fcMin[i]))); }
-            hl.addView(hiT); hl.addView(sl); hl.addView(loT);
-            cell.addView(day); cell.addView(g); cell.addView(hl);
+            info.addView(day);
+            android.text.SpannableStringBuilder hl = new android.text.SpannableStringBuilder();
+            if (!Double.isNaN(curWx.fcMax[i])) span(hl, f(curWx.fcMax[i]) + "°", Semantic.temp(f(curWx.fcMax[i])));
+            span(hl, " / ", theme.textDimColor);
+            if (!Double.isNaN(curWx.fcMin[i])) span(hl, f(curWx.fcMin[i]) + "°", Semantic.temp(f(curWx.fcMin[i])));
+            TextView hlv = new TextView(this);
+            hlv.setTypeface(Fonts.body, Typeface.BOLD);
+            hlv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            hlv.setText(hl);
+            info.addView(hlv);
+            // range bar: where this day's low..high sits within the week
+            RangeBar bar = new RangeBar(this, wlo, whi, curWx.fcMin[i], curWx.fcMax[i]);
+            LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(5));
+            bp.topMargin = dp(2);
+            info.addView(bar, bp);
+            android.text.SpannableStringBuilder ex = new android.text.SpannableStringBuilder();
+            int pop = curWx.fcPop == null ? -1 : curWx.fcPop[i];
+            if (pop >= 0) span(ex, "\u2602" + pop + "%", Semantic.precip(pop));
+            double wk = curWx.fcWindKmh == null ? Double.NaN : curWx.fcWindKmh[i];
+            if (!Double.isNaN(wk)) { int mph = (int) Math.round(wk * 0.621); span(ex, "  \u2248" + mph + "mph", Semantic.wind(mph)); }
+            TextView exv = new TextView(this);
+            exv.setTypeface(Fonts.body);
+            exv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+            exv.setSingleLine(true);
+            exv.setText(ex);
+            info.addView(exv);
+            cell.addView(info, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
             forecastStrip.addView(cell, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        }
+    }
+
+    private static void span(android.text.SpannableStringBuilder sb, String s, int color) {
+        int st = sb.length();
+        sb.append(s);
+        sb.setSpan(new android.text.style.ForegroundColorSpan(color), st, sb.length(), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+    }
+
+    /** A low..high bar placed within the week's overall range, colored cool to warm. */
+    private static class RangeBar extends View {
+        final double lo, hi, a, b;
+        final android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        RangeBar(android.content.Context c, double lo, double hi, double a, double b) { super(c); this.lo = lo; this.hi = hi; this.a = a; this.b = b; }
+        @Override protected void onDraw(android.graphics.Canvas cv) {
+            float w = getWidth(), h = getHeight();
+            p.setColor(0x33FFFFFF);
+            cv.drawRoundRect(0, 0, w, h, h / 2, h / 2, p);
+            if (Double.isNaN(a) || Double.isNaN(b) || hi <= lo) return;
+            float x0 = (float) ((a - lo) / (hi - lo) * w), x1 = (float) ((b - lo) / (hi - lo) * w);
+            p.setShader(new android.graphics.LinearGradient(x0, 0, Math.max(x1, x0 + 1), 0,
+                    Semantic.temp(f(a)), Semantic.temp(f(b)), android.graphics.Shader.TileMode.CLAMP));
+            cv.drawRoundRect(x0, 0, Math.max(x1, x0 + h), h, h / 2, h / 2, p);
+            p.setShader(null);
         }
     }
 

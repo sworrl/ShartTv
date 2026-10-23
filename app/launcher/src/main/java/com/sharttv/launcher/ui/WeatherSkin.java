@@ -27,6 +27,8 @@ public class WeatherSkin extends Drawable {
     private final boolean freezing;
     private final float d;           // px per dp
     private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private float radius;            // corner radius (px) to clip to; the card's own clip can drop
+    private final android.graphics.Path clip = new android.graphics.Path();   // out while it's lifted on focus
 
     public WeatherSkin(String category, float intensity, boolean freezing, float density) {
         this.category = category == null ? "clear" : category;
@@ -35,9 +37,21 @@ public class WeatherSkin extends Drawable {
         this.d = density;
     }
 
+    /** Clip to rounded corners (px). */
+    public WeatherSkin radius(float r) { radius = r; return this; }
+
     @Override public void draw(Canvas cv) {
         RectF r = new RectF(getBounds());
         if (r.width() <= 0 || r.height() <= 0) return;
+        cv.save();
+        clip.reset();
+        clip.addRoundRect(r, radius, radius, android.graphics.Path.Direction.CW);
+        cv.clipPath(clip);
+        drawSkin(cv, r);
+        cv.restore();
+    }
+
+    private void drawSkin(Canvas cv, RectF r) {
 
         boolean rainy = category.equals("rain") || category.equals("heavy_rain")
                 || category.equals("drizzle") || category.equals("storm");
