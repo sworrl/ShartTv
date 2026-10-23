@@ -27,7 +27,7 @@ Taken on the TV. The place name and the radar map are blurred.
 | ![Profiles](docs/screenshots/profiles.png) | ![Appearance](docs/screenshots/settings.png) |
 | **Who's watching?** Household profiles, each with its own theme, recents and learned apps. | **Appearance.** Section cards with their own art down the left, the controls on the right. The Inputs section lists every port. |
 | ![Name an input](docs/screenshots/input-editor.png) | |
-| **Name an input.** Long-press an input (or open it from Appearance) to call it "Steam Deck", "Mac mini" or anything else, and pick its card from twelve device paintings. | |
+| **Name an input.** Long-press an input (or open it from Appearance) to call it "Steam Deck", "Mac mini" or anything else, and pick its card from 50 paintings: every console generation, PC handhelds, retro and FPGA systems, computers and media boxes. | |
 
 The hour clock comes in six animated styles: Split-flap, Odometer, Ember, Nixie, Gothic and
 Classic. Each one tints with the time of day.
@@ -125,10 +125,22 @@ row, and the hour chime. It ignores the contents of other apps.
   caption shows the app's own icon and name. Long input names like "HDMI 3 (eARC/ARC)" become a
   title plus a small caption, and labels shrink to fit their card. (Appearance > Home layout
   switches app cards back to banners or icons.)
-- **Named inputs.** Long-press OK on an input to name what's plugged in and give it a card:
-  Steam Deck, Mac mini, laptop, gaming PC, game console, handheld, streaming stick, cable box,
-  Blu-ray, soundbar, camera or retro console. The port ("HDMI 2") stays as the caption. Names are
-  shared by every profile, since they describe the hardware.
+- **Named inputs.** Long-press OK on an input to name what's plugged in and give it a card from
+  50 paintings, grouped:
+  - **PC & handheld:** Steam Deck, ROG Ally, Legion Go, gaming PC, handheld
+  - **Nintendo:** NES, Super Nintendo, N64, GameCube, Wii, Wii U, Switch, Switch 2
+  - **PlayStation:** PlayStation 1 to 5
+  - **Xbox:** Xbox, 360, One, Series X, Series S
+  - **Sega:** Master System, Genesis, Saturn, Dreamcast
+  - **Retro & classic:** Atari 2600, Intellivision, ColecoVision, TurboGrafx-16, Neo Geo, 3DO,
+    Jaguar, Analogue, MiSTer FPGA, emulation box, Evercade VS, arcade stick, retro console,
+    game console
+  - **Computers & media:** Mac mini, laptop, NVIDIA Shield, streaming stick, cable box, Blu-ray,
+    soundbar, camera
+
+  Picking a card fills in its name, which you can then edit. The port ("HDMI 2") stays as the
+  caption. Names are shared by every profile, since they describe the hardware. The art shows each
+  system's shape, with no logos or lettering.
 - **Motion.** Every card, pill and avatar lifts with a little spring on focus, catches a sweep of
   light, and gets a gold ring. A click presses in, bounces back and blooms with the accent color
   before the next screen opens.

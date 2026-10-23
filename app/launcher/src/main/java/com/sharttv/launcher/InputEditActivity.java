@@ -127,7 +127,16 @@ public class InputEditActivity extends Activity {
         grid.setClipChildren(false);
         grid.setPadding(dp(8), 0, 0, 0);   // room for the focused card's lift
         col.setClipChildren(false);
-        col.addView(grid, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        // 50 presets in groups: the one place that scrolls (it follows focus)
+        android.widget.ScrollView sv = new android.widget.ScrollView(this);
+        sv.setVerticalScrollBarEnabled(false);
+        sv.setClipChildren(false);
+        sv.setClipToPadding(false);
+        sv.setPadding(0, dp(4), 0, dp(10));
+        sv.setVerticalFadingEdgeEnabled(true);
+        sv.setFadingEdgeLength(dp(28));
+        sv.addView(grid);
+        col.addView(sv, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         buildGrid();
 
         LinearLayout btns = new LinearLayout(this);
@@ -152,22 +161,42 @@ public class InputEditActivity extends Activity {
         finish();
     }
 
+    private static final int PER_ROW = 5;
+
     private void buildGrid() {
         grid.removeAllViews();
-        int perRow = 5;
-        LinearLayout row = null;
-        for (int i = -1; i < InputNames.KEYS.length; i++) {
-            if ((i + 1) % perRow == 0) {
-                row = new LinearLayout(this);
-                row.setOrientation(LinearLayout.HORIZONTAL);
-                row.setClipChildren(false);
-                grid.addView(row);
+        heading("This port");
+        LinearLayout row = newRow();
+        row.addView(artCard("", port == null ? "Default" : port, portArt));
+        for (String g : InputNames.GROUPS) {
+            heading(g);
+            int n = 0;
+            row = null;
+            for (InputNames.Preset p : InputNames.PRESETS) {
+                if (!p.group.equals(g)) continue;
+                if (n++ % PER_ROW == 0) row = newRow();
+                row.addView(artCard(p.key, p.label, p.art));
             }
-            String key = i < 0 ? "" : InputNames.KEYS[i];
-            String lab = i < 0 ? (port == null ? "Default" : port) : InputNames.LABELS[i];
-            int art = i < 0 ? portArt : InputNames.ART[i];
-            row.addView(artCard(key, lab, art));
         }
+    }
+
+    private LinearLayout newRow() {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setClipChildren(false);
+        grid.addView(row);
+        return row;
+    }
+
+    private void heading(String s) {
+        TextView tv = new TextView(this);
+        tv.setTypeface(Fonts.display, Typeface.BOLD);
+        tv.setText(s.toUpperCase(java.util.Locale.US));
+        tv.setTextColor(t.accentColor);
+        tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        tv.setLetterSpacing(0.14f);
+        tv.setPadding(dp(2), dp(10), 0, dp(2));
+        grid.addView(tv);
     }
 
     private View artCard(final String key, final String label, int art) {
