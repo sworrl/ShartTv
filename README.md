@@ -15,14 +15,16 @@ Owner: sworrl <agent.jearl@gmail.com>
 
 ## Screenshots
 
+Taken on the TV. The place name and the radar map are blurred.
+
 | | |
 |---|---|
 | ![Home](docs/screenshots/home.png) | ![Home, app rows](docs/screenshots/home-rows.png) |
-| **Home.** Weather hero, Recent row (lands on the app you just left), top bar with the hour clock and profile avatar. | **App rows.** Recent, Most Used (learned), inputs, all apps. |
+| **Home.** Weather hero beside the Featured strip (pinned and most-used apps), the top bar with the hour clock and the profile avatar, then Recent. | **Rows.** Recent (the app you just left comes first), the inputs with their own art, then every app. |
 | ![Weather](docs/screenshots/weather.png) | ![Hour chime](docs/screenshots/chime.png) |
-| **Weather.** Current conditions, 16 metrics colored by value, live radar, forecast, last-updated time. | **Hour chime.** At the top of every hour a glass card rolls the clock over (17:59 → 18:00) above whatever is playing, with the weather now and for the next hour. Playback and audio aren't touched. |
+| **Weather.** Current conditions, 16 metrics colored by value, live radar (blurred here), forecast, and the last-updated time. | **Hour chime.** At the top of every hour a glass card rolls the clock over (17:59 → 18:00) above whatever is playing, with the weather now and for the next hour. Playback and audio aren't touched. |
 | ![Profiles](docs/screenshots/profiles.png) | ![Appearance](docs/screenshots/settings.png) |
-| **Who's watching?** Household profiles, each with its own theme, recents and learned apps. | **Appearance.** Colors, icon and tile styles, hour-clock style and format, live preview. |
+| **Who's watching?** Household profiles, each with its own theme, recents and learned apps. | **Appearance.** Section cards with their own art down the left, and the controls on the right. Each clock style card is a live clock. |
 
 The hour clock comes in six animated styles: Split-flap, Odometer, Ember, Nixie, Gothic and
 Classic. Each one tints with the time of day.
@@ -108,9 +110,14 @@ row, and the hour chime. It ignores the contents of other apps.
 
 ## Features
 
-- **Home.** One scrolling page: the weather hero, then Recent (the app you were just in is
-  focused when you come back), Most Used (learned from what you open), HDMI inputs, and all apps.
-  No ads, no sponsored rows, no "featured" content.
+- **Home.** One scrolling page. The weather hero sits beside a Featured strip of your pinned and
+  most-used apps. Below come Recent (the app you were just in is focused when you come back),
+  the inputs, and all apps. No ads, no sponsored rows, nothing from the stock launcher's feeds.
+- **Bespoke art.** HDMI 1 to 4, composite video, and every Appearance section have their own
+  painted card art in the home's gothic night style. Long input names like
+  "HDMI 3 (eARC/ARC)" become a title plus a small caption, and labels shrink to fit their card.
+- **Live sky.** Home, Weather, Appearance and Profiles all sit over the same animated sky. The
+  sun and moon pass behind the glass cards, never over text.
 - **Profiles.** Up to six household profiles from the avatar in the top-right corner. Each has its
   own theme, recents and learned usage. They live inside the launcher: switching real Android
   users needs system privileges this build doesn't give apps.

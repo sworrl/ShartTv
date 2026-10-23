@@ -335,14 +335,18 @@ public class SettingsActivity extends Activity {
         hc.setFormat(t.clockFormat);
         hc.setPalette(t.textColor, t.surfaceColor);
         hc.setAccent(TimeSky.now(loc).accent);
-        c.addView(hc);
+        LinearLayout.LayoutParams hlp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        hlp.gravity = Gravity.CENTER_HORIZONTAL;
+        c.addView(hc, hlp);
         TextView tv = new TextView(this);
         tv.setTypeface(Fonts.body, Typeface.BOLD);
         tv.setText(name);
         tv.setTextColor(on ? t.accentColor : t.textColor);
         tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
         tv.setPadding(0, dp(4), 0, 0);
-        c.addView(tv);
+        tv.setGravity(Gravity.CENTER);
+        c.addView(tv, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         lp.setMargins(0, 0, dp(10), dp(10));
         c.setLayoutParams(lp);

@@ -168,8 +168,11 @@ public class WeatherView extends View {
 
         // 1b) horizon glow band (warm by day, cool by night) — gives depth/artistry
         int glow = (wx != null && wx.isDay) ? Color.argb(70, 255, 190, 120) : Color.argb(60, 90, 120, 200);
-        p.setShader(new LinearGradient(0, h * 0.5f, 0, h * 0.72f, Color.argb(0, 0, 0, 0), glow, Shader.TileMode.CLAMP));
-        cv.drawRect(0, h * 0.5f, w, h * 0.72f, p);
+        // fades in AND out (a one-way ramp left a hard edge across the screen)
+        int clear = glow & 0x00FFFFFF;
+        p.setShader(new LinearGradient(0, h * 0.42f, 0, h * 0.92f, new int[]{clear, glow, clear},
+                new float[]{0f, 0.45f, 1f}, Shader.TileMode.CLAMP));
+        cv.drawRect(0, h * 0.42f, w, h * 0.92f, p);
         p.setShader(null);
 
         // 1c) celestial body (sun by day / moon by night), arcing by time of day. It passes BEHIND
