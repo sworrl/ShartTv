@@ -38,6 +38,8 @@ class HourChime {
 
     private static final long LEAD_MS = 3_000;       // appears this long before the hour
     private static final long HOLD_MS = 3_200;       // stays this long after the rollover
+    // while Sony's hourly clock is still on (StockClock), arrive before it and leave after it
+    private static final long STOCK_LEAD_MS = 5_600, STOCK_HOLD_MS = 9_800;
     private static final long CHECK_MS = 30_000;     // re-derive the schedule (survives sleep/clock changes)
     private static final long HOUR = 3_600_000L;
 
@@ -73,11 +75,15 @@ class HourChime {
 
     private static long nextHour(long now) { return (now / HOUR + 1) * HOUR; }
 
+    private boolean stockOn() { return StockClock.HOURLY.equals(StockClock.mode(ctx)); }
+    private long lead() { return stockOn() ? STOCK_LEAD_MS : LEAD_MS; }
+    private long hold() { return stockOn() ? STOCK_HOLD_MS : HOLD_MS; }
+
     private final Runnable check = new Runnable() {
         @Override public void run() {
             long now = System.currentTimeMillis();
             long hour = nextHour(now);
-            long dt = hour - LEAD_MS - now;
+            long dt = hour - lead() - now;
             if (dt < 0) { hour += HOUR; dt += HOUR; }   // too late for this one
             if (dt > 60_000 && dt < 150_000 && refreshedFor != hour) {   // fresh weather for the card
                 refreshedFor = hour;
@@ -92,7 +98,7 @@ class HourChime {
         Theme t = Theme.load(ctx);
         PowerManager pm = (PowerManager) ctx.getSystemService(Context.POWER_SERVICE);
         boolean screenOn = pm == null || pm.isInteractive();
-        if (!preview && (!t.hourChime || !screenOn || homeInFront)) { h.postDelayed(check, LEAD_MS + 1_000); return; }
+        if (!preview && (!t.hourChime || !screenOn || homeInFront)) { h.postDelayed(check, lead() + 1_000); return; }
         removeNow();
         try {
             card = build(t, preview);
@@ -109,7 +115,7 @@ class HourChime {
             card.setTranslationY(-dp(10));
             card.animate().alpha(1f).translationY(0).setDuration(380).start();
             h.post(tint);
-            h.postDelayed(this::hide, LEAD_MS + HOLD_MS);
+            h.postDelayed(this::hide, preview ? LEAD_MS + HOLD_MS : lead() + hold());
         } catch (Exception e) {
             card = null;
             h.postDelayed(check, LEAD_MS + 1_000);

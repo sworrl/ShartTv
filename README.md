@@ -61,6 +61,9 @@ and only changes what isn't already right:
 7. **Screensaver:** keep the Google Photos screensaver (Ambient) on its factory build. Its October
    2026 Play update can't get its photo token from the built-in Chromecast service on this TV, so it
    shows a black screen with only the clock. Pass `--keep-ambient-update` to leave it alone.
+8. **Sony's hourly clock:** turn off Sony's "Auto clock display", which otherwise pops up under
+   the hour chime and stays after it. Only Sony's own apps can write that setting, so the script
+   opens Timers & Clock and sets it to Off with the D-pad, and only when nothing is playing.
 
 Other commands:
 
@@ -162,7 +165,8 @@ row, and the hour chime. It ignores the contents of other apps.
   location, the last cached fix, and an optional fallback from `app/location.properties`.
 - **Hour chime.** A few seconds before each hour, a glass card shows the rollover and the weather
   for now and the next hour. It's an accessibility overlay: it can't be focused or touched, and
-  it leaves playback and audio alone. It turns off in Appearance.
+  it leaves playback and audio alone. It turns off in Appearance. While Sony's own hourly clock is
+  still on, the card arrives before it and leaves after it, so only ours shows.
 - **24-hour color.** The accent color follows the real sun (dawn, day, golden hour, dusk, night)
   and never repeats from one second to the next.
 - **Hardening.** R8 full-mode minify and resource shrinking, release-signed, no backups. TLS

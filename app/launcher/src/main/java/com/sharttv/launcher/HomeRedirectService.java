@@ -61,13 +61,17 @@ public class HomeRedirectService extends AccessibilityService {
         wxH.post(wxTick);
         // adb-only preview: `am broadcast -a com.sharttv.launcher.PREVIEW_CHIME`. Gated on DUMP, which
         // only shell/system hold, so other apps can't pop the overlay.
+        // `am broadcast -a com.sharttv.launcher.STOCK_CLOCK` answers with Sony's clock mode (for
+        // sharttv.py, which can't read Sony's settings from the shell).
         previewReceiver = new android.content.BroadcastReceiver() {
             @Override public void onReceive(android.content.Context c, Intent i) {
+                if ("com.sharttv.launcher.STOCK_CLOCK".equals(i.getAction())) { setResultData("mode=" + StockClock.mode(c)); return; }
                 if (chime != null) chime.preview(i.getStringExtra("style"));   // --es style nixie
             }
         };
-        registerReceiver(previewReceiver, new android.content.IntentFilter("com.sharttv.launcher.PREVIEW_CHIME"),
-                android.Manifest.permission.DUMP, null, RECEIVER_EXPORTED);
+        android.content.IntentFilter f = new android.content.IntentFilter("com.sharttv.launcher.PREVIEW_CHIME");
+        f.addAction("com.sharttv.launcher.STOCK_CLOCK");
+        registerReceiver(previewReceiver, f, android.Manifest.permission.DUMP, null, RECEIVER_EXPORTED);
     }
 
     @Override public void onDestroy() {

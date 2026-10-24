@@ -7,6 +7,8 @@
   <!-- the TV's Wi-Fi network location, so the weather follows the TV wherever it is -->
   <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
   <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+  <!-- read-only: whether Sony's own hourly clock is on (see StockClock) -->
+  <uses-permission android:name="com.sony.dtv.settingsprovider.permission.READ_SETTINGS"/>
   <uses-feature android:name="android.software.leanback" android:required="false"/>
   <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
 

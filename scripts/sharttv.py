@@ -14,6 +14,8 @@ what isn't already right:
      and clear any background restriction on launcherx (it breaks the personal-photo screensaver)
   7. keep the Photos screensaver on its factory build (the Play update from 2026-10 can't get
      its photo token from Chromecast on this TV, so it shows a black screen with only the clock)
+  8. turn off Sony's own hourly clock (it pops up under ours), through Timers & Clock, and only
+     when nothing is playing
 
 Usage:
   scripts/sharttv.py               discover + deploy + debloat (the default)
@@ -483,6 +485,80 @@ def pin_ambient(adb, state):
     save_state(state)
 
 
+# ---------------------------------------------------------------- Sony's hourly clock
+
+TIMERS_ACT = "com.sony.dtv.timers/.activity.TimersMainActivity"
+CLOCK_MODES = {"0": "Off", "1": "On (always)", "2": "On (every hour)"}
+
+
+def stock_clock_mode(adb):
+    """Sony's 'Auto clock display' ("0" off, "1" always, "2" hourly). The shell can't read Sony's
+    settings, but the launcher can, so its accessibility service answers a broadcast."""
+    m = re.search(r'data="mode=(\w*)"', adb.sh("am broadcast -a com.sharttv.launcher.STOCK_CLOCK"))
+    return m.group(1) if m else None
+
+
+def playing(adb):
+    return "state=3" in adb.sh("dumpsys media_session")
+
+
+def ui_nodes(adb):
+    """(text, bounds, focused) for every node on screen, via uiautomator."""
+    adb.sh("uiautomator dump /sdcard/sharttv-ui.xml", timeout=30)
+    xml = adb.sh("cat /sdcard/sharttv-ui.xml; rm -f /sdcard/sharttv-ui.xml")
+    out = []
+    for n in re.finditer(r"<node [^>]*>", xml):
+        a = dict(re.findall(r'([\w-]+)="([^"]*)"', n.group(0)))
+        b = [int(v) for v in re.findall(r"\d+", a.get("bounds", ""))]
+        if len(b) == 4: out.append((a.get("text", ""), b, a.get("focused") == "true"))
+    return out
+
+
+def focus_and_click(adb, label, tries=14):
+    """D-pad to the row whose text is `label` and press OK. Settings screens are list rows, so
+    this moves up/down until the focused node contains the label's node."""
+    for _ in range(tries):
+        nodes = ui_nodes(adb)
+        target = next((b for t, b, _ in nodes if t == label), None)
+        if target is None: return False
+        foc = [b for _, b, f in nodes if f]
+        if foc:
+            f = min(foc, key=lambda b: (b[2] - b[0]) * (b[3] - b[1]))   # innermost focused
+            if f[0] <= target[0] and f[1] <= target[1] and f[2] >= target[2] and f[3] >= target[3]:
+                adb.sh("input keyevent KEYCODE_DPAD_CENTER"); time.sleep(1.2)
+                return True
+            key = "KEYCODE_DPAD_DOWN" if target[1] > f[1] else "KEYCODE_DPAD_UP"
+        else:
+            key = "KEYCODE_DPAD_DOWN"
+        adb.sh(f"input keyevent {key}"); time.sleep(0.5)
+    return False
+
+
+def stock_clock_off(adb):
+    """Sony's hourly clock comes in under our chime at :59:55 and outlasts it. Only Sony's own apps
+    can write that setting, so turn it off the way a person would: Timers & Clock > Auto clock
+    display > Off. Never while something is playing (it opens Settings over it)."""
+    step("Sony's hourly clock")
+    mode = stock_clock_mode(adb)
+    if mode is None: warn("couldn't ask the launcher (accessibility service not running yet?)"); return
+    if mode in ("", "0"): ok("off (ours is the only hourly clock)"); return
+    say(f"  Sony's Auto clock display is '{CLOCK_MODES.get(mode, mode)}'")
+    manual = "Settings > Timers & Clock > Auto clock display > Off"
+    if playing(adb):
+        todo(f"something is playing, so not opening Settings now. Rerun later, or: {manual}")
+        return
+    if DRY: todo("would turn it off in Timers & Clock"); return
+    adb.sh(f"am start -n {TIMERS_ACT}"); time.sleep(2.5)
+    done = focus_and_click(adb, "Auto clock display") and focus_and_click(adb, "Off")
+    time.sleep(1)
+    for _ in range(3): adb.sh("input keyevent KEYCODE_BACK"); time.sleep(0.4)
+    adb.sh("input keyevent KEYCODE_HOME")
+    if done and stock_clock_mode(adb) == "0":
+        todo("turned Sony's Auto clock display off")
+    else:
+        warn(f"couldn't turn it off automatically; on the TV: {manual}")
+
+
 # ---------------------------------------------------------------- debloat
 
 def disabled_set(adb):
@@ -560,6 +636,8 @@ def status(adb, groups):
     say(f"  a11y service bound   {a11y_bound(adb)}")
     amb = re.findall(r"codePath=(\S+)", adb.sh(f"dumpsys package {AMBIENT}"))
     if amb: say(f"  photos screensaver   {'factory build' if not amb[0].startswith('/data/') else 'Play update (photos may fail)'}")
+    cm = stock_clock_mode(adb)
+    if cm: say(f"  Sony hourly clock    {CLOCK_MODES.get(cm, cm)}")
     off, have_pk = disabled_set(adb), installed_set(adb)
     for g in GROUPS:
         pk = [p for p in GROUPS[g][1] if p in have_pk]
@@ -603,6 +681,7 @@ def main():
     configure(adb)
     if not args.no_debloat: debloat(adb, groups, state)
     if not args.keep_ambient_update: pin_ambient(adb, state)
+    stock_clock_off(adb)
     status(adb, groups)
     say("\nDone. Run it again any time; it only changes what isn't already right.")
 
